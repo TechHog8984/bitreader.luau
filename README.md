@@ -25,7 +25,7 @@ See https://create.roblox.com/docs/reference/engine/libraries/buffer for more in
 bitreader:readvarint(): number
 ```
 
-* `bitreader:readstring` reads a string that is a certain length. If there is no length argument, `string_len_func` will be called (see #L14)
+* `bitreader:readstring` reads a string that is a certain length. If there is no length argument, `string_len_func` will be called (see [Usage](#usage))
 ```lua
 bitreader:readstring(length: number?): number
 ```
