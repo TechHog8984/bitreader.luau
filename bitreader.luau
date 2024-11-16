@@ -1,3 +1,10 @@
+--[[
+    bitreader.luau
+    part of https://github.com/TechHog8984/bitreader.luau
+    by techhog
+    see LICENSE
+]]
+
 assert(buffer, "[bitreader] bitreader needs a 'buffer' global")
 local bitreader = {}
 local bitreader__mt = {
@@ -31,12 +38,12 @@ local lshift = bit32.lshift
 local band = bit32.band
 
 function bitreader.frombuffer(data: buffer, string_len_func: ( (...any) -> ...any )?)
-   return setmetatable({
-       size = buffer_len(data),
-       data = data,
-       offset = 0,
-       _string_len_func = string_len_func or bitreader.readvarint
-   }, bitreader__mt)
+    return setmetatable({
+        size = buffer_len(data),
+        data = data,
+        offset = 0,
+        _string_len_func = string_len_func or bitreader.readvarint
+    }, bitreader__mt)
 end
 function bitreader.fromstring(data: string, ...)
     local data_buffer = buffer_fromstring(data)
