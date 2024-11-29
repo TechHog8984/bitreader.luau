@@ -99,8 +99,8 @@ function bitreader:readf64()
 end
 
 function bitreader:readvarint()
-    local result = 0;
-    local shift = 0;
+    local result = 0
+    local shift = 0
 
     local byte = 0
 
