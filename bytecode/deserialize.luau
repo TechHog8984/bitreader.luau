@@ -1,9 +1,18 @@
--- last checked luau version: 0.635
+--!strict
 
-local LOGGING = false
-local log = if LOGGING then print else function(...) end
+--[[
+    bytecode/deserialize.luau
+    part of https://github.com/TechHog8984/bitreader.luau
+    by techhog
+    see LICENSE
 
-local bitreader = require("bitreader")
+    target luau version: 0.635
+]]
+
+local log: (...any) -> () = if BITREADER_DEBUG then print else function(...) end
+
+local bitreader = require("../bitreader")
+local common = require("common")
 
 local table_create = table.create
 
@@ -11,82 +20,42 @@ local rshift = bit32.rshift
 local band = bit32.band
 local bnot = bit32.bnot
 
-local enum do
-    local highest = 0
-    enum = function(explicit)
-        if explicit then
-            highest = explicit - 1
-        end
-        highest += 1
-        return highest
-    end
-end
+type Closure = common.Closure
+type Vector = common.Vector
+type Constant = common.Constant
+type ConstantString = common.ConstantString
+type Proto = common.Proto
+type Instruction = common.Instruction
 
-local LBC_VERSION_MIN = 3
-local LBC_VERSION_MAX = 6
+type StringToNumber = {
+    [string]: number
+}
 
-local LBC_TYPE_VERSION_MIN = 1
-local LBC_TYPE_VERSION_MAX = 3
+local LBC_VERSION_MIN = common.LBC_VERSION_MIN
+local LBC_VERSION_MAX = common.LBC_VERSION_MAX
 
-local LBC_TYPE_TAGGED_USERDATA_BASE = 64
-local LBC_TYPE_TAGGED_USERDATA_END = 64 + 32
+local LBC_TYPE_VERSION_MIN = common.LBC_TYPE_VERSION_MIN
+local LBC_TYPE_VERSION_MAX = common.LBC_TYPE_VERSION_MAX
 
-local LBC_TYPE_NIL = enum(0)
-local LBC_TYPE_BOOLEAN = enum()
-local LBC_TYPE_NUMBER = enum()
-local LBC_TYPE_STRING = enum()
-local LBC_TYPE_TABLE = enum()
-local LBC_TYPE_FUNCTION = enum()
-local LBC_TYPE_THREAD = enum()
-local LBC_TYPE_USERDATA = enum()
-local LBC_TYPE_VECTOR = enum()
-local LBC_TYPE_BUFFER = enum()
+local LBC_TYPE_TAGGED_USERDATA_BASE = common.LBC_TYPE_TAGGED_USERDATA_BASE
+local LBC_TYPE_TAGGED_USERDATA_END = common.LBC_TYPE_TAGGED_USERDATA_END
 
-local LBC_CONSTANT_NIL = enum(0)
-local LBC_CONSTANT_BOOLEAN = enum()
-local LBC_CONSTANT_NUMBER = enum()
-local LBC_CONSTANT_STRING = enum()
-local LBC_CONSTANT_IMPORT = enum()
-local LBC_CONSTANT_TABLE = enum()
-local LBC_CONSTANT_CLOSURE = enum()
-local LBC_CONSTANT_VECTOR = enum()
+local LBC_CONSTANT_NIL = common.LBC_CONSTANT_NIL
+local LBC_CONSTANT_BOOLEAN = common.LBC_CONSTANT_BOOLEAN
+local LBC_CONSTANT_NUMBER = common.LBC_CONSTANT_NUMBER
+local LBC_CONSTANT_STRING = common.LBC_CONSTANT_STRING
+local LBC_CONSTANT_IMPORT = common.LBC_CONSTANT_IMPORT
+local LBC_CONSTANT_TABLE = common.LBC_CONSTANT_TABLE
+local LBC_CONSTANT_CLOSURE = common.LBC_CONSTANT_CLOSURE
+local LBC_CONSTANT_VECTOR = common.LBC_CONSTANT_VECTOR
 
-local LBC_CONSTANT_MIN = 0
-local LBC_CONSTANT_MAX = LBC_CONSTANT_VECTOR
+local Constant = common.Constant
 
-local Constant = {}
-Constant.__index = Constant
-
-function Constant.new(t: number, value: any?, secondary: any?)
-    assert(t >= LBC_CONSTANT_NIL and t <= LBC_CONSTANT_VECTOR, "constant type " .. t .. " is out of range (" .. LBC_CONSTANT_MIN .. ".." .. LBC_CONSTANT_MAX .. ')')
-
-    local constant = {
-        t = t,
-        [
-            if t == LBC_CONSTANT_NIL then ""
-            elseif t == LBC_CONSTANT_BOOLEAN then "bool"
-            elseif t == LBC_CONSTANT_NUMBER then "number"
-            elseif t == LBC_CONSTANT_STRING then "string"
-            elseif t == LBC_CONSTANT_IMPORT then "import"
-            elseif t == LBC_CONSTANT_TABLE then "table"
-            elseif t == LBC_CONSTANT_CLOSURE then "closure"
-            elseif t == LBC_CONSTANT_VECTOR then "vector"
-            else error("INVALID CONSTANT TYPE " .. t)
-        ] = value,
-    }
-
-    if secondary then
-        constant[
-            if t == LBC_CONSTANT_IMPORT then "value"
-            else error("INVALID CONSTANT TYPE FOR SECONDARY")
-        ] = secondary
-    end
-
-    return constant
-end
+local hasAux = common.haxAux
+local decodeInstruction = common.decodeInstruction
 
 local genv = getfenv()
-local function deserialize(bytecode: string | buffer)
+local function deserialize(bytecode: string | buffer): Proto
     local reader = if type(bytecode) == "string" then bitreader.fromstring(bytecode) else bitreader.frombuffer(bytecode)
 
     -- for testing error:
@@ -103,7 +72,6 @@ local function deserialize(bytecode: string | buffer)
 
     if lbc_version < LBC_VERSION_MIN or lbc_version > LBC_VERSION_MAX then
         error("bytecode version mismatch (expected [" .. LBC_VERSION_MIN .. ".." .. LBC_VERSION_MAX .. "]; got " .. lbc_version .. ')')
-        return
     end
 
     local types_version = 0
@@ -159,13 +127,25 @@ local function deserialize(bytecode: string | buffer)
 
     for i = 1, proto_count do
         log("proto " .. i - 1)
-        local proto = {
+        local proto: Proto = {
             bytecode_id = i - 1,
 
             max_stack_size = reader:readu8(),
             num_params = reader:readu8(),
             num_upvalues = reader:readu8(),
-            is_vararg = reader:readu8() ~= 0
+            is_vararg = reader:readu8() ~= 0,
+
+            flags = nil,
+            instructions = {},
+            size_instructions = 0,
+
+            constant_list = {},
+            constant_count = 0,
+
+            proto_list = {},
+            proto_count = 0,
+            line_defined = 0,
+            debug_name = "",
         }
         log("  max_stack_size: " .. proto.max_stack_size)
         log("  num_params: " .. proto.num_params)
@@ -174,7 +154,7 @@ local function deserialize(bytecode: string | buffer)
 
         if lbc_version >= 4 then
             proto.flags = reader:readu8()
-            log("  flags: " .. proto.flags)
+            log("  flags: " .. proto.flags :: number)
 
             if types_version == 1 or types_version == 2 or types_version == 3 then
                 local type_size = reader:readvarint()
@@ -183,16 +163,28 @@ local function deserialize(bytecode: string | buffer)
         end
 
         local size_code = reader:readvarint()
-        proto.code = table_create(size_code)
-        proto.size_code = size_code
+        proto.instructions = table_create(size_code)
 
         log("  size_code: " .. size_code)
 
-        for j = 1, size_code do
-            proto.code[j - 1] = reader:readu32()
+        do
+            local index = 0
+            local j = 1
+            while j <= size_code do
+                local insn = reader:readu32()
+                local instruction, skip_next = decodeInstruction(insn, if hasAux(insn) then reader:readu32() else nil)
+                proto.instructions[index] = instruction
+                if skip_next then
+                    j += 1
+                end
+                index += 1
+                j += 1
+            end
+            proto.size_instructions = index + 1
         end
 
-        log("  code: ", proto.code)
+        log("  size_instructions: " .. proto.size_instructions)
+        log("  instructions:", proto.instructions)
 
         local constant_count = reader:readvarint()
         proto.constant_list = table_create(constant_count)
@@ -201,7 +193,7 @@ local function deserialize(bytecode: string | buffer)
         log("  constant_count: " .. constant_count)
 
         for j = 1, constant_count do
-            local value, secondary
+            local value: nil | boolean | number | string | StringToNumber | Closure | Vector
             local t = reader:readu8()
             if t == LBC_CONSTANT_NIL then
                 value = nil
@@ -221,34 +213,43 @@ local function deserialize(bytecode: string | buffer)
                 local id1 = band(rshift(iid, 10), 1023)
                 local id2 = band(iid, 1023)
 
-                value = proto.constant_list[id0].string
-                secondary = genv[proto.constant_list[id0].string]
+                local const = proto.constant_list[id0]::ConstantString
+                local values: string = const.string
+
+                local id = id1
                 for i = 2, count do
-                    value = value .. '.' .. proto.constant_list[id1].string
-                    secondary = secondary[proto.constant_list[id1].string]
-                    id1 = id2
+                    const = proto.constant_list[id]::ConstantString
+                    local str = const.string
+                    values = values .. '.' .. str
+                    id = id2
                 end
+
+                value = values
             elseif t == LBC_CONSTANT_TABLE then
                 local key_count = reader:readvarint()
-                value = {}
+                local valuet: StringToNumber = {}
+
                 for i = 1, key_count do
-                    local key = reader:readvarint()
-                    value[proto.constant_list[key].string] = 0
+                    local id = reader:readvarint()
+                    local const = proto.constant_list[id]::ConstantString
+                    valuet[const.string] = 0
                 end
+
+                value = valuet
             elseif t == LBC_CONSTANT_CLOSURE then
-                -- TODO: constant closure
-                value = proto_list[reader:readvarint()]
+                -- TODO: better constant closures
+                value = { proto = proto_list[reader:readvarint()] } :: Closure
             elseif t == LBC_CONSTANT_VECTOR then
                 value = {
                     x = reader:readf32(),
                     y = reader:readf32(),
                     z = reader:readf32(),
-                    w = reader:readf32()
+                    w = reader:readf32(),
                 }
             else
                 error("unexpected constant kind " .. t)
             end
-            proto.constant_list[j - 1] = Constant.new(t, value, secondary)
+            proto.constant_list[j - 1] = Constant.new(t, value)
         end
 
         log("  constants:", proto.constant_list)
@@ -271,39 +272,48 @@ local function deserialize(bytecode: string | buffer)
         log("  line_defined: " .. proto.line_defined)
         log("  debug_name: " .. proto.debug_name)
 
-        local line_info = reader:readu8()
-        if line_info ~= 0 then
-            proto.line_gap_log2 = reader:readu8()
+        if reader:readu8() ~= 0 then -- line_info
+            local line_gap_log2 = reader:readu8()
 
-            local intervals = rshift(proto.size_code - 1, proto.line_gap_log2) + 1
-            local abs_offset = band(proto.size_code + 3, bnot(3))
+            local intervals = rshift(size_code - 1, line_gap_log2) + 1
+            local abs_offset = band(size_code + 3, bnot(3))
 
             local line_info_count = abs_offset + intervals * 4
-            proto.line_info = table_create(line_info_count)
+            local line_info = table_create(line_info_count)
+
+            proto.line_gap_log2 = line_gap_log2
+            proto.line_info = line_info
             proto.line_info_count = line_info_count
             proto.line_info_abs_offset = abs_offset
 
+            log("  line_info_count: " .. line_info_count)
+
             local last_offset = 0
-            for j = 1, proto.size_code do
+            for j = 1, size_code do
                 last_offset += reader:readu8()
-                proto.line_info[j - 1] = last_offset
+                line_info[j - 1] = last_offset
             end
 
             local last_line = 0
             for j = 1, intervals do
                 last_line += reader:readi32()
-                proto.line_info[j - 1 + proto.size_code] = last_line
+                line_info[j - 1 + size_code] = last_line
             end
+
+            log("  line_info:", line_info)
         end
 
-        local debug_info = reader:readu8()
-        if debug_info ~= 0 then
+        if reader:readu8() ~= 0 then -- debug_info
             local loc_var_count = reader:readvarint()
-            proto.loc_var_list = table_create(loc_var_count)
+            local loc_var_list = table_create(loc_var_count)
+
+            proto.loc_var_list = loc_var_list
             proto.loc_var_count = loc_var_count
 
+            log("  loc_var_count: " .. loc_var_count)
+
             for j = 1, loc_var_count do
-                proto.loc_var_list[j - 1] = {
+                loc_var_list[j - 1] = {
                     var_name = readString(),
                     start_pc = reader:readvarint(),
                     end_pc = reader:readvarint(),
@@ -311,15 +321,21 @@ local function deserialize(bytecode: string | buffer)
                 }
             end
 
+            log("  loc_var_list:", loc_var_list)
+
             local upvalue_count = reader:readvarint()
             assert(upvalue_count == proto.num_upvalues)
 
-            proto.upvalues = table_create(upvalue_count)
+            local upvalue_list = table_create(upvalue_count)
+
+            proto.upvalue_list = upvalue_list
             proto.upvalue_count = upvalue_count
 
             for j = 1, upvalue_count do
-                proto.upvalues[j - 1] = readString()
+                upvalue_list[j - 1] = readString()
             end
+
+            log("  upvalue_list:", upvalue_list)
         end
 
         proto_list[i - 1] = proto
