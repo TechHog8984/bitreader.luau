@@ -27,7 +27,7 @@ type ConstantString = common.ConstantString
 type Proto = common.Proto
 type Instruction = common.Instruction
 
-type StringToNumber = {
+type string_to_number = {
     [string]: number
 }
 
@@ -193,7 +193,7 @@ local function deserialize(bytecode: string | buffer): Proto
         log("  constant_count: " .. constant_count)
 
         for j = 1, constant_count do
-            local value: nil | boolean | number | string | StringToNumber | Closure | Vector
+            local value: nil | boolean | number | string | string_to_number | Closure | Vector
             local t = reader:readu8()
             if t == LBC_CONSTANT_NIL then
                 value = nil
@@ -227,7 +227,7 @@ local function deserialize(bytecode: string | buffer): Proto
                 value = values
             elseif t == LBC_CONSTANT_TABLE then
                 local key_count = reader:readvarint()
-                local valuet: StringToNumber = {}
+                local valuet: string_to_number = {}
 
                 for i = 1, key_count do
                     local id = reader:readvarint()
