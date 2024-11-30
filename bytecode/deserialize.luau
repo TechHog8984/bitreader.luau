@@ -180,7 +180,7 @@ local function deserialize(bytecode: string | buffer): Proto
                 index += 1
                 j += 1
             end
-            proto.size_instructions = index + 1
+            proto.size_instructions = index
         end
 
         log("  size_instructions: " .. proto.size_instructions)
