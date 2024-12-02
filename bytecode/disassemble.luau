@@ -14,6 +14,8 @@ local log: (...any) -> () = if BITREADER_DEBUG then print else function(...) end
 local deserialize = require("deserialize")
 local common = require("common")
 
+local tryToGetProto = common.tryToGetProto
+
 type Proto = common.Proto
 
 local function disassembleProto(proto: Proto): string
@@ -73,12 +75,7 @@ local function disassembleProto(proto: Proto): string
     return result
 end
 local function disassemble(arg1: string | Proto): string
-    local proto: Proto
-    if type(arg1) == "string" or type(arg1) == "buffer" then
-        proto = deserialize(arg1)
-    else
-        proto = arg1
-    end
+    local proto = tryToGetProto(arg1, deserialize)
     assert(proto)
 
     return disassembleProto(proto)

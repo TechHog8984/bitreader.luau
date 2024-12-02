@@ -261,6 +261,18 @@ function Constant.new(t: number, value: any?): Constant
     return constant :: Constant
 end
 
+local function tryToGetProto(arg1: string | Proto, deserialize: (string | buffer) -> Proto): Proto
+    local proto: Proto
+    if type(arg1) == "string" or type(arg1) == "buffer" then
+        proto = deserialize(arg1)
+    else
+        proto = arg1
+    end
+    assert(proto)
+
+    return proto
+end
+
 -- NOP: noop
 local LOP_NOP = enum(0)
 -- BREAK: debugger break
@@ -930,6 +942,8 @@ local function decodeInstruction(insn: number, aux: number?): (Instruction, bool
 end
 
 return {
+    enum = enum,
+
     LBC_VERSION_MIN = LBC_VERSION_MIN,
     LBC_VERSION_MAX = LBC_VERSION_MAX,
 
@@ -963,6 +977,8 @@ return {
     LBC_CONSTANT_MAX = LBC_CONSTANT_MAX,
 
     Constant = Constant,
+
+    tryToGetProto = tryToGetProto,
 
     LOP_NOP = LOP_NOP,
 
