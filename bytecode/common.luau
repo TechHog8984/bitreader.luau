@@ -23,6 +23,29 @@ local enum do
     end
 end
 
+local STRING_ESCAPE_MAP = {
+    ['\a'] = 'a',
+    ['\b'] = 'b',
+    ['\n'] = 'n',
+    ['\r'] = 'r',
+    ['\t'] = 't',
+    ['\v'] = 'v',
+    ['\\'] = '\\',
+    ['"'] = '"',
+    ['\0'] = '0'
+}
+local function formatString(str: string): string
+    str = (str:gsub('.', function(ch)
+        local escape = STRING_ESCAPE_MAP[ch]
+        if escape then
+            return '\\' .. escape
+        end
+        return ch
+    end))
+
+    return '"' .. str .. '"'
+end
+
 local LBC_VERSION_MIN = 3
 local LBC_VERSION_MAX = 6
 
@@ -181,17 +204,7 @@ local CONSTANT_TYPE_NAME_MAP = {
     [LBC_CONSTANT_CLOSURE] = "closure",
     [LBC_CONSTANT_VECTOR] = "vector",
 }
-local STRING_ESCAPE_MAP = {
-    ['\a'] = 'a',
-    ['\b'] = 'b',
-    ['\n'] = 'n',
-    ['\r'] = 'r',
-    ['\t'] = 't',
-    ['\v'] = 'v',
-    ['\\'] = '\\',
-    ['"'] = '"',
-    ['\0'] = '0'
-}
+
 function formatConstant(self: Constant): string
     local result = "nil"
     if self.t == LBC_CONSTANT_NIL then
@@ -200,17 +213,7 @@ function formatConstant(self: Constant): string
     elseif self.t == LBC_CONSTANT_NUMBER then
         result = tostring((self::ConstantNumber).number)
     elseif self.t == LBC_CONSTANT_STRING then
-        local str = (self::ConstantString).string
-
-        str = (str:gsub('.', function(ch)
-            local escape = STRING_ESCAPE_MAP[ch]
-            if escape then
-                return '\\' .. escape
-            end
-            return ch
-        end))
-
-        result = '"' .. str .. '"'
+        result = formatString((self::ConstantString).string)
     elseif self.t == LBC_CONSTANT_IMPORT then
         result = (self::ConstantImport).import
     elseif self.t == LBC_CONSTANT_TABLE then
@@ -232,7 +235,7 @@ function formatConstant(self: Constant): string
         result = "{x = " .. vector.x .. ", y = " .. vector.y ..
             ", z = " .. vector.z .. ", w = " .. vector.w .. '}'
     else
-        error("INVALID CONSTANT TYPE " .. self.t)
+        error("INVALID CONSTANT TYPE " .. tostring(self.t))
     end
 
     return result .. " -- " .. CONSTANT_TYPE_NAME_MAP[self.t]
@@ -253,7 +256,7 @@ function Constant.new(t: number, value: any?): Constant
 
     local constant = {
         t = t,
-        [CONSTANT_TYPE_TO_KEY_MAP[t] or error("INVALID CONSTANT TYPE " .. t)] = value,
+        [CONSTANT_TYPE_TO_KEY_MAP[t] or error("INVALID CONSTANT TYPE " .. tostring(t))] = value,
     }
 
     constant.format = formatConstant
@@ -943,6 +946,7 @@ end
 
 return {
     enum = enum,
+    formatString = formatString,
 
     LBC_VERSION_MIN = LBC_VERSION_MIN,
     LBC_VERSION_MAX = LBC_VERSION_MAX,
