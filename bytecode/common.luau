@@ -104,7 +104,7 @@ export type LocVar = {
     reg: number
 }
 
-type BaseInstruction = { op: number }
+type BaseInstruction = { op: number, format: (self: Instruction) -> string }
 
 export type InstructionSpecial = BaseInstruction & {
     is_nop: boolean,
@@ -156,10 +156,11 @@ export type Proto = {
     line_defined: number,
     debug_name: string,
 
-    line_gap_log2: number?,
-    line_info: { number }?,
-    line_info_count: number?,
-    line_info_abs_offset: number?,
+    -- line_gap_log2: number?,
+    -- line_info: { number }?,
+    -- abs_line_info: { number }?,
+    -- line_info_count: number?,
+    -- line_info_abs_offset: number?,
 
     loc_var_list: { LocVar }?,
     loc_var_count: number?,
@@ -169,7 +170,73 @@ export type Proto = {
 }
 
 local Constant = {}
-Constant.__index = Constant
+
+local CONSTANT_TYPE_NAME_MAP = {
+    [LBC_CONSTANT_NIL] = "nil",
+    [LBC_CONSTANT_BOOLEAN] = "boolean",
+    [LBC_CONSTANT_NUMBER] = "number",
+    [LBC_CONSTANT_STRING] = "string",
+    [LBC_CONSTANT_IMPORT] = "import",
+    [LBC_CONSTANT_TABLE] = "table",
+    [LBC_CONSTANT_CLOSURE] = "closure",
+    [LBC_CONSTANT_VECTOR] = "vector",
+}
+local STRING_ESCAPE_MAP = {
+    ['\a'] = 'a',
+    ['\b'] = 'b',
+    ['\n'] = 'n',
+    ['\r'] = 'r',
+    ['\t'] = 't',
+    ['\v'] = 'v',
+    ['\\'] = '\\',
+    ['"'] = '"',
+    ['\0'] = '0'
+}
+function formatConstant(self: Constant): string
+    local result = "nil"
+    if self.t == LBC_CONSTANT_NIL then
+    elseif self.t == LBC_CONSTANT_BOOLEAN then
+        result = if (self::ConstantBoolean).bool then "true" else "false"
+    elseif self.t == LBC_CONSTANT_NUMBER then
+        result = tostring((self::ConstantNumber).number)
+    elseif self.t == LBC_CONSTANT_STRING then
+        local str = (self::ConstantString).string
+
+        str = (str:gsub('.', function(ch)
+            local escape = STRING_ESCAPE_MAP[ch]
+            if escape then
+                return '\\' .. escape
+            end
+            return ch
+        end))
+
+        result = '"' .. str .. '"'
+    elseif self.t == LBC_CONSTANT_IMPORT then
+        result = (self::ConstantImport).import
+    elseif self.t == LBC_CONSTANT_TABLE then
+        local t = (self::ConstantTable).table
+        local body = ""
+
+        for k in t do
+            body ..= k .. " = ?, "
+        end
+        if next(t) then
+            body = body:sub(1, -3)
+        end
+
+        result = '{' .. body .. '}'
+    elseif self.t == LBC_CONSTANT_CLOSURE then
+        result = "closure with proto_" .. (self::ConstantClosure).closure.proto.bytecode_id
+    elseif self.t == LBC_CONSTANT_VECTOR then
+        local vector = self::ConstantVector
+        result = "{x = " .. vector.x .. ", y = " .. vector.y ..
+            ", z = " .. vector.z .. ", w = " .. vector.w .. '}'
+    else
+        error("INVALID CONSTANT TYPE " .. self.t)
+    end
+
+    return result .. " -- " .. CONSTANT_TYPE_NAME_MAP[self.t]
+end
 
 local CONSTANT_TYPE_TO_KEY_MAP = {
     [LBC_CONSTANT_NIL] = "",
@@ -189,60 +256,9 @@ function Constant.new(t: number, value: any?): Constant
         [CONSTANT_TYPE_TO_KEY_MAP[t] or error("INVALID CONSTANT TYPE " .. t)] = value,
     }
 
+    constant.format = formatConstant
+
     return constant :: Constant
-end
-local FORMAT_ESCAPE_MAP = {
-    ['\a'] = 'a',
-    ['\b'] = 'b',
-    ['\n'] = 'n',
-    ['\r'] = 'r',
-    ['\t'] = 't',
-    ['\v'] = 'v',
-    ['\\'] = '\\',
-    ['"'] = '"',
-    ['\0'] = '0'
-}
-function Constant:format(): string
-    if self.t == LBC_CONSTANT_NIL then
-        return "nil"
-    elseif self.t == LBC_CONSTANT_BOOLEAN then
-        return if (self::ConstantBoolean).bool then "true" else "false"
-    elseif self.t == LBC_CONSTANT_NUMBER then
-        return tostring((self::ConstantNumber).number)
-    elseif self.t == LBC_CONSTANT_STRING then
-        local str = (self::ConstantString).string
-
-        str = (str:gsub('.', function(ch)
-            local escape = FORMAT_ESCAPE_MAP[ch]
-            if escape then
-                return '\\' .. escape
-            end
-            return ch
-        end))
-
-        return str
-    elseif self.t == LBC_CONSTANT_IMPORT then
-        return (self::ConstantImport).import
-    elseif self.t == LBC_CONSTANT_TABLE then
-        local t = (self::ConstantTable).table
-        local body = ""
-
-        for k in t do
-            body ..= k .. " = ?, "
-        end
-        if next(t) then
-            body = body:sub(1, -3)
-        end
-
-        return '{' .. body .. '}'
-    elseif self.t == LBC_CONSTANT_CLOSURE then
-        return "closure with proto_" .. (self::ConstantClosure).closure.proto.bytecode_id
-    elseif self.t == LBC_CONSTANT_VECTOR then
-        local vector = self::ConstantVector
-        return "{x = " .. vector.x .. ", y = " .. vector.y ..
-            ", z = " .. vector.z .. ", w = " .. vector.w .. '}'
-    end
-    error("INVALID CONSTANT TYPE " .. self.t)
 end
 
 -- NOP: noop
@@ -672,36 +688,6 @@ local function tostringOp(op: number): string
     return OP_TOSTRING_MAP[op] or "UNKNOWN"
 end
 
--- export type Instruction = {
---     op: number,
---     a: number,
---     b: number,
---     c: number,
-
---     d: number,
---     e: number
--- }
--- local function decodeInstruction(insn: number): Instruction
---     local op = band(insn, 0xff)
-
---     local a = band(rshift(insn, 8), 0xff)
---     local b = band(rshift(insn, 16), 0xff)
---     local c = band(rshift(insn, 24), 0xff)
-
---     local d = rshift(insn, 16)
---     local e = rshift(insn, 8)
-
---     return {
---         op = op,
---         a = a,
---         b = b,
---         c = c,
-
---         d = d,
---         e = e
---     }
--- end
-
 type number_to_boolean = { [number]: boolean }
 local INSTRUCTION_SPECIAL_MAP: number_to_boolean = {
     [LOP_NOP] = true,
@@ -743,6 +729,7 @@ local INSTRUCTION_AD_MAP: number_to_boolean = {
     [LOP_DUPTABLE] = true,
     [LOP_FORNPREP] = true,
     [LOP_FORNLOOP] = true,
+    [LOP_DUPCLOSURE] = true,
     [LOP_FORGPREP] = true,
 }
 local INSTRUCTION_AAUX_MAP: number_to_boolean = {
@@ -829,6 +816,56 @@ local function hasAux(insn: number): boolean
     return INSTRUCTION_ANYAUX_MAP[op] or false
 end
 
+local function formatInstruction(instruction: Instruction): string
+    local op = instruction.op
+    local op_string = tostringOp(instruction.op)
+    local result = op_string
+
+    if INSTRUCTION_SPECIAL_MAP[op] then
+        return result
+    elseif INSTRUCTION_A_MAP[op] then
+        local instructiona = instruction :: InstructionA
+        return result .. "(A" .. instructiona.a .. ")"
+    elseif INSTRUCTION_D_MAP[op] then
+        local instructiond = instruction :: InstructionD
+        return result .. "(D" .. instructiond.d .. ")"
+    elseif INSTRUCTION_E_MAP[op] then
+        local instructione = instruction :: InstructionE
+        return result .. "(E" .. instructione.e .. ")"
+
+    elseif INSTRUCTION_AB_MAP[op] then
+        local instructionab = instruction :: InstructionAB
+        return result .. "(A" .. instructionab.a .. ", B" .. instructionab.b .. ")"
+    elseif INSTRUCTION_AC_MAP[op] then
+        local instructionac = instruction :: InstructionAC
+        return result .. "(A" .. instructionac.a .. ", C" .. instructionac.c .. ")"
+    elseif INSTRUCTION_AD_MAP[op] then
+        local instructionad = instruction :: InstructionAD
+        return result .. "(A" .. instructionad.a .. ", D" .. instructionad.d .. ")"
+    elseif INSTRUCTION_AAUX_MAP[op] then
+        local instructionaaux = instruction :: InstructionAAUX
+        return result .. "(A" .. instructionaaux.a .. ", AUX" .. instructionaaux.aux .. ")"
+
+    elseif INSTRUCTION_ABC_MAP[op] then
+        local instructionabc = instruction :: InstructionABC
+        return result .. "(A" .. instructionabc.a .. ", B" .. instructionabc.b .. ", C" .. instructionabc.c .. ")"
+    elseif INSTRUCTION_ABAUX_MAP[op] then
+        local instructionabaux = instruction :: InstructionABAUX
+        return result .. "(A" .. instructionabaux.a .. ", B" .. instructionabaux.b .. ", AUX" .. instructionabaux.aux .. ")"
+    elseif INSTRUCTION_ACAUX_MAP[op] then
+        local instructionacaux = instruction :: InstructionACAUX
+        return result .. "(A" .. instructionacaux.a .. ", C" .. instructionacaux.c .. ", AUX" .. instructionacaux.aux .. ")"
+    elseif INSTRUCTION_ADAUX_MAP[op] then
+        local instructionadaux = instruction :: InstructionADAUX
+        return result .. "(A" .. instructionadaux.a .. ", D" .. instructionadaux.d .. ", AUX" .. instructionadaux.aux .. ")"
+
+    elseif INSTRUCTION_ABCAUX_MAP[op] then
+        local instructionabcaux = instruction :: InstructionABCAUX
+        return result .. "(A" .. instructionabcaux.a .. ", B" .. instructionabcaux.b .. ", C" .. instructionabcaux.c .. ", AUX" .. instructionabcaux.aux .. ")"
+    else
+        error("invalid op " .. op_string)
+    end
+end
 local function decodeInstruction(insn: number, aux: number?): (Instruction, boolean)
     local op = band(insn, 0xff)
 
@@ -886,6 +923,7 @@ local function decodeInstruction(insn: number, aux: number?): (Instruction, bool
         error("invalid op " .. op_string)
     end
 
+    instruction.format = formatInstruction
     instruction.op_string = if BITREADER_DEBUG then op_string else nil
 
     return instruction, skip_next
