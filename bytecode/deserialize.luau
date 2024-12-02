@@ -18,7 +18,7 @@ local table_create = table.create
 
 local rshift = bit32.rshift
 local band = bit32.band
-local bnot = bit32.bnot
+-- local bnot = bit32.bnot
 
 type Closure = common.Closure
 type Vector = common.Vector
@@ -54,7 +54,7 @@ local Constant = common.Constant
 local hasAux = common.haxAux
 local decodeInstruction = common.decodeInstruction
 
-local genv = getfenv()
+-- local genv = getfenv()
 local function deserialize(bytecode: string | buffer): Proto
     local reader = if type(bytecode) == "string" then bitreader.fromstring(bytecode) else bitreader.frombuffer(bytecode)
 
@@ -273,34 +273,47 @@ local function deserialize(bytecode: string | buffer): Proto
         log("  debug_name: " .. proto.debug_name)
 
         if reader:readu8() ~= 0 then -- line_info
+            -- local line_gap_log2 = reader:readu8()
+
+            -- local intervals = rshift(size_code - 1, line_gap_log2) + 1
+            -- local abs_offset = band(size_code + 3, bnot(3))
+
+            -- local line_info_count = abs_offset + intervals * 4
+            -- local line_info = table_create(line_info_count)
+            -- local abs_line_info = table_create(intervals);
+
+            -- proto.line_gap_log2 = line_gap_log2
+            -- proto.line_info = line_info
+            -- proto.abs_line_info = abs_line_info
+            -- proto.line_info_count = line_info_count
+            -- proto.line_info_abs_offset = abs_offset
+
+            -- log("  line_info_count: " .. line_info_count)
+
+            -- local last_offset = 0
+            -- for j = 1, size_code do
+            --     last_offset += reader:readu8()
+            --     line_info[j - 1] = last_offset
+            -- end
+            -- log("  line_info:", line_info)
+
+            -- local last_line = 0
+            -- for j = 1, intervals do
+            --     last_line += reader:readi32()
+            --     abs_line_info[j - 1] = last_line
+            --     line_info[j - 1 + abs_offset] = last_line
+            -- end
+            -- log("  abs_line_info:", abs_line_info)
+
             local line_gap_log2 = reader:readu8()
 
             local intervals = rshift(size_code - 1, line_gap_log2) + 1
-            local abs_offset = band(size_code + 3, bnot(3))
-
-            local line_info_count = abs_offset + intervals * 4
-            local line_info = table_create(line_info_count)
-
-            proto.line_gap_log2 = line_gap_log2
-            proto.line_info = line_info
-            proto.line_info_count = line_info_count
-            proto.line_info_abs_offset = abs_offset
-
-            log("  line_info_count: " .. line_info_count)
-
-            local last_offset = 0
             for j = 1, size_code do
-                last_offset += reader:readu8()
-                line_info[j - 1] = last_offset
+                reader:readu8()
             end
-
-            local last_line = 0
             for j = 1, intervals do
-                last_line += reader:readi32()
-                line_info[j - 1 + size_code] = last_line
+                reader:readi32()
             end
-
-            log("  line_info:", line_info)
         end
 
         if reader:readu8() ~= 0 then -- debug_info
