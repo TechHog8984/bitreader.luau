@@ -34,7 +34,7 @@ local STRING_ESCAPE_MAP = {
     ['"'] = '"',
     ['\0'] = '0'
 }
-local function formatString(str: string): string
+local function formatString(str: string, omit_quotes: boolean?): string
     str = (str:gsub('.', function(ch)
         local escape = STRING_ESCAPE_MAP[ch]
         if escape then
@@ -42,6 +42,10 @@ local function formatString(str: string): string
         end
         return ch
     end))
+
+    if omit_quotes then
+        return str
+    end
 
     return '"' .. str .. '"'
 end
