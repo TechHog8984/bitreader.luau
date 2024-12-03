@@ -709,8 +709,8 @@ astToString = function(node: AstNode, indent: number?): string
             return ("    "):rep(indent)
         end
 
-        local function pushIndent() indent += 1 print("+", indent) end
-        local function popIndent() indent -= 1 print("-", indent) end
+        local function pushIndent() indent += 1 end
+        local function popIndent() indent -= 1 end
 
         local function getEnd()
             return '\n' .. getIndent() .. "end"
