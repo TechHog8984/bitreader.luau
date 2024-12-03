@@ -316,7 +316,7 @@ local function deserialize(bytecode: string | buffer, decodeCodeArg: (decodeCode
 
             -- local line_info_count = abs_offset + intervals * 4
             -- local line_info = table_create(line_info_count)
-            -- local abs_line_info = table_create(intervals);
+            -- local abs_line_info = table_create(intervals)
 
             -- proto.line_gap_log2 = line_gap_log2
             -- proto.line_info = line_info
