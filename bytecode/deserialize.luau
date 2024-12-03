@@ -51,12 +51,34 @@ local LBC_CONSTANT_VECTOR = common.LBC_CONSTANT_VECTOR
 
 local Constant = common.Constant
 
+local getOp = common.getOp
+local setOp = common.setOp
 local hasAux = common.haxAux
-local decodeInstruction = common.decodeInstruction
+local deserializeInstruction = common.deserializeInstruction
+
+type decodeCode = ( { number } ) -> ()
+
+local builtin_decodeCode_map = {
+    op_mul_227 = function(code_list: { number })
+        for i, insn in code_list do
+            local op = getOp(insn)
+            local new = setOp(insn, op * 203)
+            code_list[i] = new
+        end
+    end
+}
 
 -- local genv = getfenv()
-local function deserialize(bytecode: string | buffer): Proto
+local function deserialize(bytecode: string | buffer, decodeCodeArg: (decodeCode | string)?): Proto
     local reader = if type(bytecode) == "string" then bitreader.fromstring(bytecode) else bitreader.frombuffer(bytecode)
+
+    local decodeCode: decodeCode?
+    if type(decodeCodeArg) == "string" then
+        decodeCode = builtin_decodeCode_map[decodeCodeArg]
+        assert(decodeCode, "no builtin decodeCode with name " .. decodeCodeArg)
+    elseif type(decodeCodeArg) == "function" then
+        decodeCode = decodeCodeArg
+    end
 
     -- for testing error:
     -- local a = buffer.fromstring("_syntax error trol")
@@ -167,12 +189,26 @@ local function deserialize(bytecode: string | buffer): Proto
 
         log("  size_code: " .. size_code)
 
-        do
+        local code_list: { number } = {}
+        for j = 1, size_code do
+            code_list[j] = reader:readu32()
+        end
+
+        if decodeCode then
+            log("  decoding instructions...")
+            decodeCode(code_list)
+            log("  decoded instructions")
+        end
+
+        do -- instructions
             local index = 0
             local j = 1
             while j <= size_code do
-                local insn = reader:readu32()
-                local instruction, skip_next = decodeInstruction(insn, if hasAux(insn) then reader:readu32() else nil)
+                local insn = code_list[j]
+                local instruction, skip_next = deserializeInstruction(
+                    insn,
+                    if hasAux(insn) then code_list[j + 1] else nil
+                )
                 proto.instructions[index] = instruction
                 if skip_next then
                     j += 1

@@ -9,8 +9,10 @@
     target luau version: 0.635
 ]]
 
+local bor = bit32.bor
 local band = bit32.band
 local rshift = bit32.rshift
+local lshift = bit32.lshift
 
 local enum do
     local highest = 0
@@ -118,7 +120,9 @@ export type Vector = {
     w: number
 }
 
-export type ConstantVector = BaseConstant & Vector
+export type ConstantVector = BaseConstant & {
+    vector: Vector
+}
 
 export type Constant = ConstantNil | ConstantBoolean |
     ConstantNumber | ConstantString | ConstantImport |
@@ -235,7 +239,7 @@ function formatConstant(self: Constant): string
     elseif self.t == LBC_CONSTANT_CLOSURE then
         result = "closure with proto_" .. (self::ConstantClosure).closure.proto.bytecode_id
     elseif self.t == LBC_CONSTANT_VECTOR then
-        local vector = self::ConstantVector
+        local vector = (self::ConstantVector).vector
         result = "{x = " .. vector.x .. ", y = " .. vector.y ..
             ", z = " .. vector.z .. ", w = " .. vector.w .. '}'
     else
@@ -704,7 +708,7 @@ local OP_TOSTRING_MAP: { [number]: string } = {
     [LOP__COUNT] = "LOP__COUNT",
 }
 local function tostringOp(op: number): string
-    return OP_TOSTRING_MAP[op] or "UNKNOWN"
+    return OP_TOSTRING_MAP[op] or ("UNKNOWN" .. tostring(op))
 end
 
 type number_to_boolean = { [number]: boolean }
@@ -735,6 +739,9 @@ local INSTRUCTION_AB_MAP: number_to_boolean = {
     [LOP_RETURN] = true,
     [LOP_GETVARARGS] = true,
     [LOP_CAPTURE] = true,
+    [LOP_NOT] = true,
+    [LOP_MINUS] = true,
+    [LOP_LENGTH] = true,
 }
 local INSTRUCTION_AC_MAP: number_to_boolean = {
     [LOP_FASTCALL] = true,
@@ -768,7 +775,7 @@ local INSTRUCTION_ABC_MAP: number_to_boolean = {
     [LOP_DIV] = true,
     [LOP_MOD] = true,
     [LOP_POW] = true,
-    [LOP_ADD] = true,
+    [LOP_ADDK] = true,
     [LOP_SUBK] = true,
     [LOP_MULK] = true,
     [LOP_DIVK] = true,
@@ -800,6 +807,7 @@ local INSTRUCTION_ADAUX_MAP: number_to_boolean = {
     [LOP_JUMPIFNOTEQ] = true,
     [LOP_JUMPIFNOTLE] = true,
     [LOP_JUMPIFNOTLT] = true,
+    [LOP_FORGLOOP] = true,
     [LOP_JUMPXEQKNIL] = true,
     [LOP_JUMPXEQKB] = true,
     [LOP_JUMPXEQKN] = true,
@@ -807,9 +815,11 @@ local INSTRUCTION_ADAUX_MAP: number_to_boolean = {
 }
 
 local INSTRUCTION_ABCAUX_MAP: number_to_boolean = {
+    [LOP_NAMECALL] = true,
     [LOP_GETTABLEKS] = true,
     [LOP_SETTABLEKS] = true,
     [LOP_SETLIST] = true,
+    [LOP_FASTCALL3] = true,
     [LOP_FASTCALL2] = true,
     [LOP_FASTCALL2K] = true,
 }
@@ -827,11 +837,53 @@ local INSTRUCTION_ANYAUX_MAP: number_to_boolean = {} do
     push(INSTRUCTION_ACAUX_MAP)
     push(INSTRUCTION_ADAUX_MAP)
 
-    push(INSTRUCTION_ABAUX_MAP)
+    push(INSTRUCTION_ABCAUX_MAP)
+end
+
+local function getOp(insn: number): number
+    return band(insn, 0xff)
+end
+
+local function getA(insn: number): number
+    return band(rshift(insn, 8), 0xff)
+end
+local function getB(insn: number): number
+    return band(rshift(insn, 16), 0xff)
+end
+local function getC(insn: number): number
+    return band(rshift(insn, 24), 0xff)
+end
+
+local function getD(insn: number): number
+    return rshift(insn, 16)
+end
+local function getE(insn: number): number
+    return rshift(insn, 8)
+end
+
+local function setOp(insn: number, op: number): number
+    return bor(band(insn, 0xffffff00), op)
+end
+
+local function setA(insn: number, a: number): number
+    return bor(band(insn, 0xffff00ff), lshift(a, 8))
+end
+local function setB(insn: number, b: number): number
+    return bor(band(insn, 0xff00ffff), lshift(b, 16))
+end
+local function setC(insn: number, c: number): number
+    return bor(band(insn, 0x00ffffff), lshift(c, 24))
+end
+
+local function setD(insn: number, d: number): number
+    return bor(band(insn, 0x0000ffff), lshift(d, 16))
+end
+local function setE(insn: number, e: number): number
+    return bor(band(insn, 0xffff00ff), lshift(e, 8))
 end
 
 local function hasAux(insn: number): boolean
-    local op = band(insn, 0xff)
+    local op = getOp(insn)
     return INSTRUCTION_ANYAUX_MAP[op] or false
 end
 
@@ -885,15 +937,16 @@ local function formatInstruction(instruction: Instruction): string
         error("invalid op " .. op_string)
     end
 end
-local function decodeInstruction(insn: number, aux: number?): (Instruction, boolean)
-    local op = band(insn, 0xff)
 
-    local a = band(rshift(insn, 8), 0xff)
-    local b = band(rshift(insn, 16), 0xff)
-    local c = band(rshift(insn, 24), 0xff)
+local function deserializeInstruction(insn: number, aux: number?): (Instruction, boolean)
+    local op = getOp(insn)
 
-    local d = rshift(insn, 16)
-    local e = rshift(insn, 8)
+    local a = getA(insn)
+    local b = getB(insn)
+    local c = getC(insn)
+
+    local d = getD(insn)
+    local e = getE(insn)
 
     local op_string = tostringOp(op)
     if INSTRUCTION_ANYAUX_MAP[op] then
@@ -1103,6 +1156,21 @@ return {
 
     LOP__COUNT = LOP__COUNT,
 
+    getOp = getOp,
+    getA = getA,
+    getB = getB,
+    getC = getC,
+    getD = getD,
+    getE = getE,
+
+    setOp = setOp,
+    setA = setA,
+    setB = setB,
+    setC = setC,
+    setD = setD,
+    setE = setE,
+
     haxAux = hasAux,
-    decodeInstruction = decodeInstruction
+
+    deserializeInstruction = deserializeInstruction,
 }

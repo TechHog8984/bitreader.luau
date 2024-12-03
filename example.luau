@@ -20,9 +20,9 @@ local bytecode = luau.compile([[
     print(a,b,c,d)
 ]])
 
-fs.writeFile("bytecode.bin", bytecode)
+-- local bytecode = fs.readFile("bytecode.bin")
 
-local proto = deserialize(bytecode)
+local proto = deserialize(bytecode, "op_mul_227")
 
 print("-- DISASSEMBLY:")
 print(disassemble(proto))
