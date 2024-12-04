@@ -99,8 +99,7 @@ export type ConstantString = BaseConstant & {
     string: string
 }
 export type ConstantImport = BaseConstant & {
-    import: string,
-    value: any?
+    import: string
 }
 export type ConstantTable = BaseConstant & {
     table: { [string]: any }
@@ -1155,6 +1154,8 @@ return {
     LOP_IDIVK = LOP_IDIVK,
 
     LOP__COUNT = LOP__COUNT,
+
+    tostringOp = tostringOp,
 
     getOp = getOp,
     getA = getA,
