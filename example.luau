@@ -22,12 +22,53 @@ else
         -- loadb
         local b = true
         local c = false
-    
+
         -- loadn
-        local d = 88_998_844
-    
-        print(a,b,c,d)
-    ]])
+        local d = 255
+
+        -- loadk
+        local e = 88_998_844
+        local f = "hello"
+
+        -- move
+        local g = a
+
+        -- getglobal & call
+        print(a,b,c,d,e,f)
+
+        -- setglobal
+        global = a
+
+        -- gettable
+        a = global[a]
+
+        -- settable
+        global[b] = c
+
+        -- gettableks
+        a = global["hi"]
+
+        -- settableks
+        global["0"] = a
+
+        -- gettablen
+        a = global[200]
+
+        -- settablen
+        global[220] = a
+    ]]
+        -- ,{optimizationLevel = 0}
+    )
+    bytecode = luau.compile([[
+        local function proto1()
+            local a = 1
+        end
+        proto1()
+        local d = proto1
+        print(d)
+    ]]
+        ,{optimizationLevel = 0}
+    )
     decode_code = nil
 end
 
