@@ -271,7 +271,7 @@ function Constant.new(t: number, value: any?): Constant
     return constant :: Constant
 end
 
-local function tryToGetProto(arg1: string | Proto, deserialize: (string | buffer) -> Proto): Proto
+local function tryToGetProto(arg1: string | buffer | Proto, deserialize: (string | buffer) -> Proto): Proto
     local proto: Proto
     if type(arg1) == "string" or type(arg1) == "buffer" then
         proto = deserialize(arg1)
