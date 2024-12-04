@@ -589,7 +589,7 @@ local function decompileProto(proto: Proto): AstStatBlock
 
     return newAstStatBlock(decompiled_body)
 end
-local function decompile(arg1: string | Proto): string
+local function decompile(arg1: string | buffer | Proto): string
     local proto = tryToGetProto(arg1, deserialize)
     local ast_stat = decompileProto(proto)
 
