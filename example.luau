@@ -6,7 +6,7 @@ local deserialize = require("bytecode/deserialize")
 local disassemble = require("bytecode/disassemble")
 local decompile = require("bytecode/decompiler/decompile")
 
-local READ_ROBLOX_BYTECODE_FROM_FILE = true
+local READ_ROBLOX_BYTECODE_FROM_FILE = false
 
 local decode_code: string?
 local bytecode: string
@@ -56,10 +56,7 @@ else
 
         -- settablen
         global[220] = a
-    ]]
-        -- ,{optimizationLevel = 0}
-    )
-    bytecode = luau.compile([[
+
         local function proto1()
             local a = 1
         end
@@ -69,6 +66,7 @@ else
     ]]
         ,{optimizationLevel = 0}
     )
+
     decode_code = nil
 end
 

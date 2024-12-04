@@ -327,13 +327,14 @@ end
 
 type Scope = {
     register_to_local_map: { [number]: AstLocal },
+    proto_has_been_created_map: { [number]: boolean },
 
     expectLocal: ( Scope, number ) -> AstLocal,
 
     getOrAddLocal: ( Scope, number ) -> (AstLocal, boolean),
     getOrAddLocalAsExpr: ( Scope, number ) -> AstExprLocal,
 
-    getOrAddProto: ( Scope, number, number ) -> (AstLocal, boolean),
+    addProto: ( Scope, number ) -> string,
 
     setSingleRegister: ( Scope, number, AstExpr) -> AstStatLocal | AstStatAssign
 }
@@ -361,6 +362,7 @@ local function decompileProto(proto: Proto): AstStatBlock
 
     local scope: Scope = {
         register_to_local_map = {},
+        proto_has_been_created_map = {},
 
         expectLocal = function(self: Scope, register: number): AstLocal
             return assert(self.register_to_local_map[register], "failed to find register " .. register .. " in map")
@@ -379,28 +381,29 @@ local function decompileProto(proto: Proto): AstStatBlock
             )
         end,
 
-        getOrAddProto = function(self: Scope, register: number, proto_id: number): (AstLocal, boolean)
-            local is_new = not self.register_to_local_map[register]
-            if is_new then
-                local child_proto = proto_list[proto_id]
-                local name = "func" .. proto_id
-
-                local args: { AstLocal } = {}
-                for i = 1, child_proto.num_params do
-                    args[i] = newAstLocal("arg" .. i)
-                end
-
-                pushStat(newAstStatLocalFunction(
-                    newAstLocal(name),
-                    newAstExprFunction(
-                        args,
-                        child_proto.is_vararg,
-                        decompileProto(child_proto)
-                    )
-                ))
-                self.register_to_local_map[register] = newAstLocal(name)
+        addProto = function(self: Scope, proto_id: number): string
+            local child_proto = proto_list[proto_id]
+            local name = "func" .. child_proto.bytecode_id
+            if self.proto_has_been_created_map[proto_id] then
+                return name
             end
-            return self.register_to_local_map[register], is_new
+
+            local args: { AstLocal } = {}
+            for i = 1, child_proto.num_params do
+                args[i] = newAstLocal("arg" .. i)
+            end
+
+            pushStat(newAstStatLocalFunction(
+                newAstLocal(name),
+                newAstExprFunction(
+                    args,
+                    child_proto.is_vararg,
+                    decompileProto(child_proto)
+                )
+            ))
+            self.proto_has_been_created_map[proto_id] = true
+
+            return name
         end,
 
         setSingleRegister = function(self: Scope, register: number, expr: AstExpr): AstStatLocal | AstStatAssign
@@ -558,7 +561,8 @@ local function decompileProto(proto: Proto): AstStatBlock
                 ))
             elseif op == LOP_NEWCLOSURE then
                 local instructionad = instruction :: InstructionAD
-                scope:getOrAddProto(instructionad.a, instructionad.d)
+                local name = scope:addProto(instructionad.d)
+                pushStat(scope:setSingleRegister(instructionad.a, newAstExprLocal(newAstLocal(name))))
             else
                 pushStat(newAstStatComment("unhandled op " .. tostringOp(op)))
             end
