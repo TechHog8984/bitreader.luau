@@ -204,9 +204,9 @@ local AST_EXPR_FUNCTION = enum()
 export type AstExprFunction = AstNode & {
     args: { AstLocal },
     vararg: boolean,
-    body: { AstStatBlock }
+    body: AstStatBlock
 }
-local function newAstExprFunction(args: { AstLocal }, vararg: boolean, body: { AstStatBlock }): AstExprFunction
+local function newAstExprFunction(args: { AstLocal }, vararg: boolean, body: AstStatBlock): AstExprFunction
     expectArg(args, "table", 1)
     expectArg(vararg, "boolean", 2)
     expectArg(body, "table", 3)
@@ -525,11 +525,11 @@ end
 
 local AST_STAT_LOCAL_FUNCTION = enum()
 export type AstStatLocalFunction = AstNode & {
-    name: AstExpr,
+    name: AstLocal,
     func: AstExprFunction
 }
-local function newAstStatLocalFunction(name: AstExpr, func: AstExprFunction): AstStatLocalFunction
-    expectExpression(name, 1)
+local function newAstStatLocalFunction(name: AstLocal, func: AstExprFunction): AstStatLocalFunction
+    expectLocal(name, 1)
     expectExpression(func, 2)
     local node = newStat(AST_STAT_LOCAL_FUNCTION) :: AstStatLocalFunction
     node.name = name
@@ -537,10 +537,32 @@ local function newAstStatLocalFunction(name: AstExpr, func: AstExprFunction): As
     return node
 end
 
+local AST_STAT_COMMENT = enum()
+export type AstStatComment = AstNode & {
+    content: string
+}
+local function newAstStatComment(content: string): AstStatComment
+    expectArg(content, "string", 1)
+    local node = newStat(AST_STAT_COMMENT) :: AstStatComment
+    node.content = content
+    return node
+end
+
+local AST_STAT_MULTILINE_COMMENT = enum()
+export type AstStatMultilineComment = AstNode & {
+    content: string
+}
+local function newAstStatMultilineComment(content: string): AstStatMultilineComment
+    expectArg(content, "string", 1)
+    local node = newStat(AST_STAT_MULTILINE_COMMENT) :: AstStatMultilineComment
+    node.content = content
+    return node
+end
+
 export type AstStat = AstStatBlock | AstStatIf | AstStatWhile | AstStatRepeat |
     AstStatBreak | AstStatContinue | AstStatReturn | AstStatExpr | AstStatLocal |
     AstStatFor | AstStatForIn | AstStatAssign | AstStatCompoundAssign |
-    AstStatFunction | AstStatLocalFunction
+    AstStatFunction | AstStatLocalFunction | AstStatComment | AstStatMultilineComment
 
 local astToString: ( node: AstNode, indent: number? ) -> string
 
@@ -602,7 +624,7 @@ local function functionToString(func: AstExprFunction, name: string?, indent: nu
     args..= if func.vararg then "...)" else ')'
     result = "function" .. (if name then " " .. name else '') .. args.. '\n'
     indent += 1
-    result ..= statArrayToString(func.body, indent) .. '\n'
+    result ..= astToString(func.body, indent) .. '\n'
     indent -= 1
     result ..= ("    "):rep(indent) .. "end"
     return result
@@ -793,7 +815,13 @@ astToString = function(node: AstNode, indent: number?): string
             result = functionToString(stat_function.func, astToString(stat_function.name, indent), indent)
         elseif node.t == AST_STAT_LOCAL_FUNCTION then
             local stat_local_function = node :: AstStatLocalFunction
-            result = "local " .. functionToString(stat_local_function.func, astToString(stat_local_function.name, indent), indent)
+            result = "local " .. functionToString(stat_local_function.func, stat_local_function.name.name, indent)
+        elseif node.t == AST_STAT_COMMENT then
+            local stat_comment = node :: AstStatComment
+            result = "--" .. stat_comment.content
+        elseif node.t == AST_STAT_MULTILINE_COMMENT then
+            local stat_multiline_comment = node :: AstStatMultilineComment
+            result = "--[[" .. stat_multiline_comment.content .. "]]"
         else
             error("unknown stat type " .. node.t)
         end
@@ -834,6 +862,42 @@ return {
 
     astToString = astToString,
 
+    AST_EXPR_GROUP = AST_EXPR_GROUP,
+    AST_EXPR_CONSTANT_NIL = AST_EXPR_CONSTANT_NIL,
+    AST_EXPR_CONSTANT_BOOL = AST_EXPR_CONSTANT_BOOL,
+    AST_EXPR_CONSTANT_NUMBER = AST_EXPR_CONSTANT_NUMBER,
+    AST_EXPR_CONSTANT_STRING = AST_EXPR_CONSTANT_STRING,
+    AST_EXPR_LOCAL = AST_EXPR_LOCAL,
+    AST_EXPR_GLOBAL = AST_EXPR_GLOBAL,
+    AST_EXPR_VARARGS = AST_EXPR_VARARGS,
+    AST_EXPR_CALL = AST_EXPR_CALL,
+    AST_EXPR_INDEX_NAME = AST_EXPR_INDEX_NAME,
+    AST_EXPR_INDEX_EXPR = AST_EXPR_INDEX_EXPR,
+    AST_EXPR_FUNCTION = AST_EXPR_FUNCTION,
+    AST_EXPR_TABLE = AST_EXPR_TABLE,
+    AST_EXPR_UNARY = AST_EXPR_UNARY,
+    AST_EXPR_BINARY = AST_EXPR_BINARY,
+    AST_EXPR_IF_ELSE = AST_EXPR_IF_ELSE,
+    AST_EXPR_INTERP_STRING = AST_EXPR_INTERP_STRING,
+
+    AST_STAT_BLOCK = AST_STAT_BLOCK,
+    AST_STAT_IF = AST_STAT_IF,
+    AST_STAT_WHILE = AST_STAT_WHILE,
+    AST_STAT_REPEAT = AST_STAT_REPEAT,
+    AST_STAT_BREAK = AST_STAT_BREAK,
+    AST_STAT_CONTINUE = AST_STAT_CONTINUE,
+    AST_STAT_RETURN = AST_STAT_RETURN,
+    AST_STAT_EXPR = AST_STAT_EXPR,
+    AST_STAT_LOCAL = AST_STAT_LOCAL,
+    AST_STAT_FOR = AST_STAT_FOR,
+    AST_STAT_FOR_IN = AST_STAT_FOR_IN,
+    AST_STAT_ASSIGN = AST_STAT_ASSIGN,
+    AST_STAT_COMPOUND_ASSIGN = AST_STAT_COMPOUND_ASSIGN,
+    AST_STAT_FUNCTION = AST_STAT_FUNCTION,
+    AST_STAT_LOCAL_FUNCTION = AST_STAT_LOCAL_FUNCTION,
+    AST_STAT_COMMENT = AST_STAT_COMMENT,
+    AST_STAT_MULTILINE_COMMENT = AST_STAT_MULTILINE_COMMENT,
+
     newAstLocal = newAstLocal,
 
     newAstExprGroup = newAstExprGroup,
@@ -869,4 +933,6 @@ return {
     newAstStatCompoundAssign = newAstStatCompoundAssign,
     newAstStatFunction = newAstStatFunction,
     newAstStatLocalFunction = newAstStatLocalFunction,
+    newAstStatComment = newAstStatComment,
+    newAstStatMultilineComment = newAstStatMultilineComment
 }
