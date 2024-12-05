@@ -731,7 +731,7 @@ astToString = function(node: AstNode, indent: number?): string
             return result .. '`'
 
         elseif node.t == AST_EXPR_TOP then
-            return "--[[ TOP ]]"
+            return "!TOP!"
         end
 
         error("unknown expression type " .. node.t)
