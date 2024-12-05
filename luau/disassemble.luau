@@ -1,7 +1,7 @@
 --!strict
 
 --[[
-    bytecode/disassemble.luau
+    luau/disassemble.luau
     part of https://github.com/TechHog8984/bitreader.luau
     by techhog
     see LICENSE

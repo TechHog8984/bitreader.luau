@@ -2,9 +2,9 @@ local fs = require("@lune/fs")
 local luau = require("@lune/luau")
 
 -- BITREADER_DEBUG = true
-local deserialize = require("bytecode/deserialize")
-local disassemble = require("bytecode/disassemble")
-local decompile = require("bytecode/decompiler/decompile")
+local deserialize = require("luau/deserialize")
+local disassemble = require("luau/disassemble")
+local decompile = require("luau/decompiler/decompile")
 
 local READ_ROBLOX_BYTECODE_FROM_FILE = false
 

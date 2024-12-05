@@ -1,7 +1,7 @@
 --!strict
 
 --[[
-    bytecode/common.luau
+    luau/common.luau
     part of https://github.com/TechHog8984/bitreader.luau
     by techhog
     see LICENSE

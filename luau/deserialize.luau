@@ -1,7 +1,7 @@
 --!strict
 
 --[[
-    bytecode/deserialize.luau
+    luau/deserialize.luau
     part of https://github.com/TechHog8984/bitreader.luau
     by techhog
     see LICENSE
