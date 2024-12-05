@@ -3,7 +3,7 @@ A read-only wrapper for luau buffers
 
 ## Why use bitreader?
 * bitreader keeps track of its offset
-* bitreader has a readvarint function for luau bytecode (as well as a [deserializer](bytecode.luau))
+* bitreader has a readvarint function for luau bytecode (as well as much more (see [luau](luau)))
 
 ## Usage
 Create a bitreader with `bitreader.frombuffer` or `bitreader.fromstring`:
