@@ -705,7 +705,7 @@ astToString = function(node: AstNode, indent: number?): string
             return '{' .. tableItemArrayToString(expr_table.items, indent) .. '}'
         elseif node.t == AST_EXPR_UNARY then
             local expr_unary = node :: AstExprUnary
-            return UNARY_TOSTRING_MAP[expr_unary.op] .. ' ' ..
+            return UNARY_TOSTRING_MAP[expr_unary.op] ..
                 astToString(expr_unary.expr, indent)
         elseif node.t == AST_EXPR_BINARY then
             local expr_binary = node :: AstExprBinary
