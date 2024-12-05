@@ -57,18 +57,30 @@ else
         -- settablen
         global[220] = a
 
+        -- newclosure
         local function proto1()
             local a = 1
         end
-        proto1()
-        local d = proto1
-        print(d)
 
-        -- return func()
-        -- return a + b, a - b, a * b, a / b, a // b, a % b, a ^ b, a .. b
-        -- return a + 1, a - 1, a * 1, a / 1, a // 1, a % 1, a ^ 1
-    
-        return not a, -a, #a
+        -- add, sub, mul, div, floordiv, mod, pow, concat
+        local a1,a2,a3,a4,a5,a6,a7,a8 = a + b, a - b, a * b, a / b, a // b, a % b, a ^ b, a .. b
+        -- addk, subk, mulk, divk, floordivk, modk, powk,
+        local b1,b2,b3,b4,b5,b6,b7 = a + 1, a - 1, a * 1, a / 1, a // 1, a % 1, a ^ 1
+
+        -- not, minus, length
+        local c1,c2,c3 = not a, -a, #a
+
+        -- newtable, setlist
+        a = {1,2,3}
+
+        -- getvarargs
+        a = ...
+
+        -- newtable, setlist multret, getvarargs multret
+        a = {...}
+
+        -- return, call
+        return proto1()
     ]]
         ,{optimizationLevel = 0}
     )
