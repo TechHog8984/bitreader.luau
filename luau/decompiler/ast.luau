@@ -331,11 +331,18 @@ local function newAstExprInterpString(string_list: { string }, expression_list: 
     return node
 end
 
+
+local AST_EXPR_TOP = enum()
+export type AstExprTop = AstNode & { }
+local function newAstExprTop(): AstExprTop
+    return newExpr(AST_EXPR_TOP)
+end
+
 export type AstExpr = AstExprGroup | AstExprConstantNil | AstExprConstantBool |
     AstExprConstantNumber | AstExprConstantString | AstExprLocal | AstExprGlobal |
     AstExprVarargs | AstExprCall | AstExprIndexName | AstExprIndexExpr |
     AstExprFunction | AstExprTable | AstExprUnary | AstExprBinary | AstExprIfElse |
-    AstExprInterpString
+    AstExprInterpString | AstExprTop
 
 local AST_STAT_BLOCK = enum()
 export type AstStatBlock = AstNode & {
@@ -537,6 +544,7 @@ local function newAstStatLocalFunction(name: AstLocal, func: AstExprFunction): A
     return node
 end
 
+
 local AST_STAT_COMMENT = enum()
 export type AstStatComment = AstNode & {
     content: string
@@ -721,6 +729,9 @@ astToString = function(node: AstNode, indent: number?): string
             result ..= formatString(expr_interp_string.string_list[last], true)
 
             return result .. '`'
+
+        elseif node.t == AST_EXPR_TOP then
+            return "--[[ TOP ]]"
         end
 
         error("unknown expression type " .. node.t)
@@ -816,6 +827,7 @@ astToString = function(node: AstNode, indent: number?): string
         elseif node.t == AST_STAT_LOCAL_FUNCTION then
             local stat_local_function = node :: AstStatLocalFunction
             result = "local " .. functionToString(stat_local_function.func, stat_local_function.name.name, indent)
+
         elseif node.t == AST_STAT_COMMENT then
             local stat_comment = node :: AstStatComment
             result = "--" .. stat_comment.content
@@ -880,6 +892,8 @@ return {
     AST_EXPR_IF_ELSE = AST_EXPR_IF_ELSE,
     AST_EXPR_INTERP_STRING = AST_EXPR_INTERP_STRING,
 
+    AST_EXPR_TOP,
+
     AST_STAT_BLOCK = AST_STAT_BLOCK,
     AST_STAT_IF = AST_STAT_IF,
     AST_STAT_WHILE = AST_STAT_WHILE,
@@ -895,6 +909,7 @@ return {
     AST_STAT_COMPOUND_ASSIGN = AST_STAT_COMPOUND_ASSIGN,
     AST_STAT_FUNCTION = AST_STAT_FUNCTION,
     AST_STAT_LOCAL_FUNCTION = AST_STAT_LOCAL_FUNCTION,
+
     AST_STAT_COMMENT = AST_STAT_COMMENT,
     AST_STAT_MULTILINE_COMMENT = AST_STAT_MULTILINE_COMMENT,
 
@@ -918,6 +933,8 @@ return {
     newAstExprIfElse = newAstExprIfElse,
     newAstExprInterpString = newAstExprInterpString,
 
+    newAstExprTop = newAstExprTop,
+
     newAstStatBlock = newAstStatBlock,
     newAstStatIf = newAstStatIf,
     newAstStatWhile = newAstStatWhile,
@@ -933,6 +950,7 @@ return {
     newAstStatCompoundAssign = newAstStatCompoundAssign,
     newAstStatFunction = newAstStatFunction,
     newAstStatLocalFunction = newAstStatLocalFunction,
+
     newAstStatComment = newAstStatComment,
     newAstStatMultilineComment = newAstStatMultilineComment
 }
