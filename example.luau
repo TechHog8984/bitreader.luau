@@ -63,6 +63,12 @@ else
         proto1()
         local d = proto1
         print(d)
+
+        -- return func()
+        -- return a + b, a - b, a * b, a / b, a // b, a % b, a ^ b, a .. b
+        -- return a + 1, a - 1, a * 1, a / 1, a // 1, a % 1, a ^ 1
+    
+        return not a, -a, #a
     ]]
         ,{optimizationLevel = 0}
     )

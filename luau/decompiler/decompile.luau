@@ -15,6 +15,8 @@ local deserialize = require("../deserialize")
 local common = require("../common")
 local ast = require("ast")
 
+local fold = require("fold")
+
 type Constant = common.Constant
 
 local LBC_CONSTANT_NIL = common.LBC_CONSTANT_NIL
@@ -32,6 +34,8 @@ type ConstantNumber = common.ConstantNumber
 type ConstantString = common.ConstantString
 type ConstantImport = common.ConstantImport
 type ConstantTable = common.ConstantTable
+
+type Instruction = common.Instruction
 
 type InstructionA = common.InstructionA
 type InstructionD = common.InstructionD
@@ -213,6 +217,8 @@ local AST_EXPR_BINARY = ast.AST_EXPR_BINARY
 local AST_EXPR_IF_ELSE = ast.AST_EXPR_IF_ELSE
 local AST_EXPR_INTERP_STRING = ast.AST_EXPR_INTERP_STRING
 
+local AST_EXPR_TOP = ast.AST_EXPR_TOP
+
 local AST_STAT_BLOCK = ast.AST_STAT_BLOCK
 local AST_STAT_IF = ast.AST_STAT_IF
 local AST_STAT_WHILE = ast.AST_STAT_WHILE
@@ -228,6 +234,7 @@ local AST_STAT_ASSIGN = ast.AST_STAT_ASSIGN
 local AST_STAT_COMPOUND_ASSIGN = ast.AST_STAT_COMPOUND_ASSIGN
 local AST_STAT_FUNCTION = ast.AST_STAT_FUNCTION
 local AST_STAT_LOCAL_FUNCTION = ast.AST_STAT_LOCAL_FUNCTION
+
 local AST_STAT_COMMENT = ast.AST_STAT_COMMENT
 local AST_STAT_MULTILINE_COMMENT = ast.AST_STAT_MULTILINE_COMMENT
 
@@ -251,6 +258,8 @@ local newAstExprBinary = ast.newAstExprBinary
 local newAstExprIfElse = ast.newAstExprIfElse
 local newAstExprInterpString = ast.newAstExprInterpString
 
+local newAstExprTop = ast.newAstExprTop
+
 local newAstStatBlock = ast.newAstStatBlock
 local newAstStatIf = ast.newAstStatIf
 local newAstStatWhile = ast.newAstStatWhile
@@ -266,6 +275,7 @@ local newAstStatAssign = ast.newAstStatAssign
 local newAstStatCompoundAssign = ast.newAstStatCompoundAssign
 local newAstStatFunction = ast.newAstStatFunction
 local newAstStatLocalFunction = ast.newAstStatLocalFunction
+
 local newAstStatComment = ast.newAstStatComment
 local newAstStatMultilineComment = ast.newAstStatMultilineComment
 
@@ -330,6 +340,7 @@ type Scope = {
     proto_has_been_created_map: { [number]: boolean },
 
     expectLocal: ( Scope, number ) -> AstLocal,
+    expectLocalAsExpr: ( Scope, number ) -> AstExprLocal,
 
     getOrAddLocal: ( Scope, number ) -> (AstLocal, boolean),
     getOrAddLocalAsExpr: ( Scope, number ) -> AstExprLocal,
@@ -339,6 +350,37 @@ type Scope = {
     setSingleRegister: ( Scope, number, AstExpr) -> AstStatLocal | AstStatAssign
 }
 
+local BINARY_LOP_TO_OP_MAP: { [number]: number } = {
+    [LOP_ADD] = BINARY_Add,
+    [LOP_SUB] = BINARY_Sub,
+    [LOP_MUL] = BINARY_Mul,
+    [LOP_DIV] = BINARY_Div,
+    [LOP_IDIV] = BINARY_FloorDiv,
+    [LOP_MOD] = BINARY_Mod,
+    [LOP_POW] = BINARY_Pow,
+
+    [LOP_CONCAT] = BINARY_Concat,
+
+    [LOP_AND] = BINARY_And,
+    [LOP_OR] = BINARY_Or,
+
+    [LOP_ADDK] = BINARY_Add,
+    [LOP_SUBK] = BINARY_Sub,
+    [LOP_MULK] = BINARY_Mul,
+    [LOP_DIVK] = BINARY_Div,
+    [LOP_IDIVK] = BINARY_FloorDiv,
+    [LOP_MODK] = BINARY_Mod,
+    [LOP_POWK] = BINARY_Pow,
+
+    [LOP_ANDK] = BINARY_And,
+    [LOP_ORK] = BINARY_Or,
+}
+local UNARY_OP_TO_OP_MAP: { [number]: number } = {
+    [LOP_NOT] = UNARY_Not,
+    [LOP_MINUS] = UNARY_Minus,
+    [LOP_LENGTH] = UNARY_Len,
+}
+
 local function decompileProto(proto: Proto): AstStatBlock
     log("proto", proto)
 
@@ -346,10 +388,18 @@ local function decompileProto(proto: Proto): AstStatBlock
     local constant_list = proto.constant_list
 
     local instruction_count = proto.size_instructions
+    local instruction_count_plus1 = instruction_count + 1
     -- create a table of instructions *starting at 1*
+    -- this table may be modified on-demand (see step1's LOP_NAMECALL)
     local instruction_list = table.create(instruction_count)
     for i = 0, instruction_count - 1 do
         instruction_list[i + 1] = proto.instructions[i]
+    end
+    
+    local function insertInstruction(index: number, instruction: Instruction)
+        table.insert(instruction_list, index, instruction)
+        instruction_count += 1
+        instruction_count_plus1 += 1
     end
 
     local decompiled_body_count = 0
@@ -366,6 +416,9 @@ local function decompileProto(proto: Proto): AstStatBlock
 
         expectLocal = function(self: Scope, register: number): AstLocal
             return assert(self.register_to_local_map[register], "failed to find register " .. register .. " in map")
+        end,
+        expectLocalAsExpr = function(self: Scope, register: number): AstExprLocal
+            return newAstExprLocal(self:expectLocal(register))
         end,
 
         getOrAddLocal = function(self: Scope, register: number): (AstLocal, boolean)
@@ -441,7 +494,11 @@ local function decompileProto(proto: Proto): AstStatBlock
     end
 
     local function step1()
-        for index = 1, instruction_count do
+        local index = 1
+        while true do
+            if index == instruction_count_plus1 then
+                break
+            end
             local instruction = instruction_list[index]
             local op = instruction.op
 
@@ -478,7 +535,7 @@ local function decompileProto(proto: Proto): AstStatBlock
                 local instructionab = instruction :: InstructionAB
                 pushStat(scope:setSingleRegister(
                     instructionab.a,
-                    newAstExprLocal(scope:expectLocal(instructionab.b))
+                    scope:expectLocalAsExpr(instructionab.b)
                 ))
 
             elseif op == LOP_GETGLOBAL then
@@ -495,7 +552,8 @@ local function decompileProto(proto: Proto): AstStatBlock
                     { newAstExprGlobal(constant.string) },
                     { scope:getOrAddLocalAsExpr(instructionacaux.a)}
                 ))
-            -- upval stuff here
+
+            -- TODO: upval ops
 
             elseif op == LOP_GETIMPORT then
                 local instructionadaux = instruction :: InstructionADAUX
@@ -559,13 +617,172 @@ local function decompileProto(proto: Proto): AstStatBlock
                     ) },
                     { scope:getOrAddLocalAsExpr(instructionabc.a) }
                 ))
+
             elseif op == LOP_NEWCLOSURE then
                 local instructionad = instruction :: InstructionAD
                 local name = scope:addProto(instructionad.d)
                 pushStat(scope:setSingleRegister(instructionad.a, newAstExprLocal(newAstLocal(name))))
+
+            elseif op == LOP_NAMECALL then
+                local instructionabcaux = instruction :: InstructionABCAUX
+                -- a+1 = b
+                insertInstruction(index + 1, {
+                    op = LOP_MOVE,
+                    a = instructionabcaux.a + 1,
+                    b = instructionabcaux.b
+                } :: InstructionAB)
+                -- a = value
+                insertInstruction(index + 2, {
+                    op = LOP_GETTABLEKS,
+                    a = instructionabcaux.a,
+                    b = instructionabcaux.a + 1,
+                    c = instructionabcaux.c,
+                    aux = instructionabcaux.aux
+                } :: InstructionABCAUX)
+            elseif op == LOP_CALL then
+                local instructionabc = instruction :: InstructionABC
+                local func = instructionabc.a
+                local arg_count = instructionabc.b - 1
+                local result_count = instructionabc.c - 1
+
+                local args: { AstExpr } = {}
+                local results: { AstLocal } = {}
+
+                if arg_count == -1 then
+                    args[1] = newAstExprTop()
+                else
+                    for i = 1, arg_count do
+                        args[i] = scope:expectLocalAsExpr(func + i)
+                    end
+                end
+
+                if result_count == -1 then
+                    results[1] = newAstLocal("!TOP!")
+                else
+                    for i = 1, result_count do
+                        local ast_local, is_new = scope:getOrAddLocal(func + i)
+                        results[i] = ast_local
+                        -- TODO: look into cases where this is valid
+                        if not is_new then
+                            assert("call result " .. i .. " (register " .. func + i .. ") was not new")
+                        end
+                    end
+                end
+
+                local call_expr = newAstExprCall(
+                    scope:expectLocalAsExpr(instructionabc.a),
+                    args,
+                    false
+                )
+                pushStat(
+                    if next(results) then
+                        -- TODO: look into cases where this is an AstStatAssign
+                        newAstStatLocal(results, { call_expr })
+                    else
+                        newAstStatExpr(call_expr)
+                )
+
+            elseif op == LOP_RETURN then
+                local instructionab = instruction :: InstructionAB
+                local start = instructionab.a
+
+                local list: { AstExpr } = {}
+
+                local count = instructionab.b - 1
+                if count == -1 then
+                    list[1] = newAstExprTop()
+                else
+                    for i = 1, count do
+                        list[i] = scope:expectLocalAsExpr(start + i - 1)
+                    end
+                end
+
+                pushStat(newAstStatReturn(list))
+
+            -- TODO: jumps
+            -- elseif op == LOP_JUMP then
+
+            -- elseif op == LOP_JUMPBACK then
+
+            -- elseif op == LOP_JUMPIF then
+
+            -- elseif op == LOP_JUMPIFNOT then
+
+            -- elseif op == LOP_JUMPIFEQ then
+            -- elseif op == LOP_JUMPIFLE then
+            -- elseif op == LOP_JUMPIFLT then
+            -- elseif op == LOP_JUMPIFNOTEQ then
+            -- elseif op == LOP_JUMPIFNOTLE then
+            -- elseif op == LOP_JUMPIFNOTLT then
+
+            elseif op == LOP_ADD or
+                op == LOP_SUB or
+                op == LOP_MUL or
+                op == LOP_DIV or
+                op == LOP_IDIV or
+                op == LOP_MOD or
+                op == LOP_POW
+            then
+                local instructionabc = instruction :: InstructionABC
+                pushStat(scope:setSingleRegister(
+                    instructionabc.a,
+                    newAstExprBinary(BINARY_LOP_TO_OP_MAP[op],
+                        scope:expectLocalAsExpr(instructionabc.b),
+                        scope:expectLocalAsExpr(instructionabc.c)
+                    )
+                ))
+
+            elseif op == LOP_CONCAT then
+                local instructionabc = instruction :: InstructionABC
+                local register_start = instructionabc.b
+                local register_end = instructionabc.c
+
+                local expr: AstExpr = scope:expectLocalAsExpr(register_start)
+                for i = register_start + 1, register_end do
+                    expr = newAstExprBinary(BINARY_Concat,
+                        expr,
+                        scope:expectLocalAsExpr(i)
+                    )
+                end
+
+                pushStat(scope:setSingleRegister(
+                    instructionabc.a,
+                    expr
+                ))
+
+            elseif op == LOP_ADDK or
+                op == LOP_SUBK or
+                op == LOP_MULK or
+                op == LOP_DIVK or
+                op == LOP_IDIVK or
+                op == LOP_MODK or
+                op == LOP_POWK
+            then
+                local instructionabc = instruction :: InstructionABC
+                pushStat(scope:setSingleRegister(
+                    instructionabc.a,
+                    newAstExprBinary(BINARY_LOP_TO_OP_MAP[op],
+                        scope:expectLocalAsExpr(instructionabc.b),
+                        getConstantExpr(constant_list[instructionabc.c])
+                    )
+                ))
+
+            elseif op == LOP_NOT or
+                op == LOP_MINUS or
+                op == LOP_LENGTH
+            then
+                local instructionab = instruction :: InstructionAB
+                pushStat(scope:setSingleRegister(
+                    instructionab.a,
+                    newAstExprUnary(UNARY_OP_TO_OP_MAP[op],
+                        scope:expectLocalAsExpr(instructionab.b)
+                    )
+                ))
+
             else
                 pushStat(newAstStatComment("unhandled op " .. tostringOp(op)))
             end
+            index += 1
         end
     end
 
@@ -587,7 +804,9 @@ local function decompileProto(proto: Proto): AstStatBlock
     --     ))
     -- )
 
-    return newAstStatBlock(decompiled_body)
+    local result_block = newAstStatBlock(decompiled_body)
+    fold(result_block)
+    return result_block
 end
 local function decompile(arg1: string | buffer | Proto): string
     local proto = tryToGetProto(arg1, deserialize)
