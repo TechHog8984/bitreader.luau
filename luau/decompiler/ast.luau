@@ -338,11 +338,17 @@ local function newAstExprTop(): AstExprTop
     return newExpr(AST_EXPR_TOP)
 end
 
+local AST_EXPR_UNKNOWN = enum()
+export type AstExprUnknown = AstNode & { }
+local function newAstExprUnknown(): AstExprUnknown
+    return newExpr(AST_EXPR_UNKNOWN)
+end
+
 export type AstExpr = AstExprGroup | AstExprConstantNil | AstExprConstantBool |
     AstExprConstantNumber | AstExprConstantString | AstExprLocal | AstExprGlobal |
     AstExprVarargs | AstExprCall | AstExprIndexName | AstExprIndexExpr |
     AstExprFunction | AstExprTable | AstExprUnary | AstExprBinary | AstExprIfElse |
-    AstExprInterpString | AstExprTop
+    AstExprInterpString | AstExprTop | AstExprUnknown
 
 local AST_STAT_BLOCK = enum()
 export type AstStatBlock = AstNode & {
@@ -732,6 +738,8 @@ astToString = function(node: AstNode, indent: number?): string
 
         elseif node.t == AST_EXPR_TOP then
             return "!TOP!"
+        elseif node.t == AST_EXPR_UNKNOWN then
+            return "!UNKNOWN!"
         end
 
         error("unknown expression type " .. node.t)
@@ -893,6 +901,7 @@ return {
     AST_EXPR_INTERP_STRING = AST_EXPR_INTERP_STRING,
 
     AST_EXPR_TOP = AST_EXPR_TOP,
+    AST_EXPR_UNKNOWN = AST_EXPR_UNKNOWN,
 
     AST_STAT_BLOCK = AST_STAT_BLOCK,
     AST_STAT_IF = AST_STAT_IF,
@@ -934,6 +943,7 @@ return {
     newAstExprInterpString = newAstExprInterpString,
 
     newAstExprTop = newAstExprTop,
+    newAstExprUnknown = newAstExprUnknown,
 
     newAstStatBlock = newAstStatBlock,
     newAstStatIf = newAstStatIf,
