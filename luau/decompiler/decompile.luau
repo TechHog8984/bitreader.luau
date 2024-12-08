@@ -15,7 +15,7 @@ local deserialize = require("../deserialize")
 local common = require("../common")
 local ast = require("ast")
 
-local fold = require("fold")
+-- local fold = require("fold")
 
 type Constant = common.Constant
 
