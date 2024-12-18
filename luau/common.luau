@@ -839,46 +839,57 @@ local INSTRUCTION_ANYAUX_MAP: number_to_boolean = {} do
     push(INSTRUCTION_ABCAUX_MAP)
 end
 
+local function uint8(num: number): number
+    return bit32.extract(num, 0, 8)
+end
+-- FIXME: test int16 and int24
+local function int16(num: number): number
+    return bit32.extract(num, 0, 16)
+end
+local function int24(num: number): number
+    return bit32.extract(num, 0, 24)
+end
+
 local function getOp(insn: number): number
-    return band(insn, 0xff)
+    return uint8(band(insn, 0xff))
 end
 
 local function getA(insn: number): number
-    return band(rshift(insn, 8), 0xff)
+    return uint8(band(rshift(insn, 8), 0xff))
 end
 local function getB(insn: number): number
-    return band(rshift(insn, 16), 0xff)
+    return uint8(band(rshift(insn, 16), 0xff))
 end
 local function getC(insn: number): number
-    return band(rshift(insn, 24), 0xff)
+    return uint8(band(rshift(insn, 24), 0xff))
 end
 
 local function getD(insn: number): number
-    return rshift(insn, 16)
+    return int16(rshift(insn, 16))
 end
 local function getE(insn: number): number
-    return rshift(insn, 8)
+    return int24(rshift(insn, 8))
 end
 
 local function setOp(insn: number, op: number): number
-    return bor(band(insn, 0xffffff00), op)
+    return bor(band(insn, 0xffffff00), uint8(op))
 end
 
 local function setA(insn: number, a: number): number
-    return bor(band(insn, 0xffff00ff), lshift(a, 8))
+    return bor(band(insn, 0xffff00ff), lshift(uint8(a), 8))
 end
 local function setB(insn: number, b: number): number
-    return bor(band(insn, 0xff00ffff), lshift(b, 16))
+    return bor(band(insn, 0xff00ffff), lshift(uint8(b), 16))
 end
 local function setC(insn: number, c: number): number
-    return bor(band(insn, 0x00ffffff), lshift(c, 24))
+    return bor(band(insn, 0x00ffffff), lshift(uint8(c), 24))
 end
 
 local function setD(insn: number, d: number): number
-    return bor(band(insn, 0x0000ffff), lshift(d, 16))
+    return bor(band(insn, 0x0000ffff), lshift(int16(d), 16))
 end
 local function setE(insn: number, e: number): number
-    return bor(band(insn, 0xffff00ff), lshift(e, 8))
+    return bor(band(insn, 0xffff00ff), lshift(int24(e), 8))
 end
 
 local function hasAux(insn: number): boolean
