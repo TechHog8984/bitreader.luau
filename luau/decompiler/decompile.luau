@@ -404,8 +404,13 @@ local function decompileProto(proto: Proto): AstStatBlock
                     instructionab.a,
                     getUpvalueExpr(instructionab.b)
                 ))
-            -- elseif op == common.LOP_SETUPVAL then
-            -- elseif op == common.LOP_CLOSEUPVALS then
+            elseif op == common.LOP_SETUPVAL then
+                local instructionab = instruction :: InstructionAB
+                pushStat(ast.newAstStatAssign(
+                    { getUpvalueExpr(instructionab.b) },
+                    { scope:expectRegisterAsExpr(instructionab.a) }
+                ))
+            elseif op == common.LOP_CLOSEUPVALS then
 
             elseif op == common.LOP_GETIMPORT then
                 local instructionadaux = instruction :: InstructionADAUX
