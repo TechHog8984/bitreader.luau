@@ -176,14 +176,16 @@ end
 local AST_EXPR_INDEX_NAME = enum()
 export type AstExprIndexName = AstNode & {
     expr: AstExpr,
-    index: string
+    index: string,
+    op: '.' | ':'
 }
-local function newAstExprIndexName(expr: AstExpr, index: string): AstExprIndexName
+local function newAstExprIndexName(expr: AstExpr, index: string, op: '.' | ':'): AstExprIndexName
     expectExpression(expr, 1)
     expectArg(index, "string", 2)
     local node = newExpr(AST_EXPR_INDEX_NAME) :: AstExprIndexName
     node.expr = expr
     node.index = index
+    node.op = op
     return node
 end
 local AST_EXPR_INDEX_EXPR = enum()
@@ -332,6 +334,18 @@ local function newAstExprInterpString(string_list: { string }, expression_list: 
 end
 
 
+local AST_EXPR_MULTILINE_COMMENT = enum()
+export type AstExprMultilineComment = AstNode & {
+    content: string
+}
+local function newAstExprMultilineComment(content: string): AstExprMultilineComment
+    expectArg(content, "string", 1)
+    local node = newExpr(AST_EXPR_MULTILINE_COMMENT) :: AstExprMultilineComment
+    node.content = content
+    return node
+end
+
+
 local AST_EXPR_TOP = enum()
 export type AstExprTop = AstNode & { }
 local function newAstExprTop(): AstExprTop
@@ -348,7 +362,7 @@ export type AstExpr = AstExprGroup | AstExprConstantNil | AstExprConstantBool |
     AstExprConstantNumber | AstExprConstantString | AstExprLocal | AstExprGlobal |
     AstExprVarargs | AstExprCall | AstExprIndexName | AstExprIndexExpr |
     AstExprFunction | AstExprTable | AstExprUnary | AstExprBinary | AstExprIfElse |
-    AstExprInterpString | AstExprTop | AstExprUnknown
+    AstExprInterpString | AstExprMultilineComment | AstExprTop | AstExprUnknown
 
 local AST_STAT_BLOCK = enum()
 export type AstStatBlock = AstNode & {
@@ -562,21 +576,10 @@ local function newAstStatComment(content: string): AstStatComment
     return node
 end
 
-local AST_STAT_MULTILINE_COMMENT = enum()
-export type AstStatMultilineComment = AstNode & {
-    content: string
-}
-local function newAstStatMultilineComment(content: string): AstStatMultilineComment
-    expectArg(content, "string", 1)
-    local node = newStat(AST_STAT_MULTILINE_COMMENT) :: AstStatMultilineComment
-    node.content = content
-    return node
-end
-
 export type AstStat = AstStatBlock | AstStatIf | AstStatWhile | AstStatRepeat |
     AstStatBreak | AstStatContinue | AstStatReturn | AstStatExpr | AstStatLocal |
     AstStatFor | AstStatForIn | AstStatAssign | AstStatCompoundAssign |
-    AstStatFunction | AstStatLocalFunction | AstStatComment | AstStatMultilineComment
+    AstStatFunction | AstStatLocalFunction | AstStatComment
 
 local astToString: ( node: AstNode, indent: number? ) -> string
 
@@ -699,7 +702,7 @@ astToString = function(node: AstNode, indent: number?): string
             return astToString(expr_call.func, indent) .. '(' .. args .. ')'
         elseif node.t == AST_EXPR_INDEX_NAME then
             local expr_index_name = node :: AstExprIndexName
-            return astToString(expr_index_name.expr, indent) .. '.' .. expr_index_name.index
+            return astToString(expr_index_name.expr, indent) .. expr_index_name.op .. expr_index_name.index
         elseif node.t == AST_EXPR_INDEX_EXPR then
             local expr_index_expr = node :: AstExprIndexExpr
             return astToString(expr_index_expr.expr, indent) .. '[' .. astToString(expr_index_expr.index, indent) .. ']'
@@ -738,6 +741,9 @@ astToString = function(node: AstNode, indent: number?): string
 
         elseif node.t == AST_EXPR_TOP then
             return "!TOP!"
+        elseif node.t == AST_EXPR_MULTILINE_COMMENT then
+            local expr_multiline_comment = node :: AstExprMultilineComment
+            return "--[[" .. expr_multiline_comment.content .. "]]"
         elseif node.t == AST_EXPR_UNKNOWN then
             return "!UNKNOWN!"
         end
@@ -839,9 +845,6 @@ astToString = function(node: AstNode, indent: number?): string
         elseif node.t == AST_STAT_COMMENT then
             local stat_comment = node :: AstStatComment
             result = "--" .. stat_comment.content
-        elseif node.t == AST_STAT_MULTILINE_COMMENT then
-            local stat_multiline_comment = node :: AstStatMultilineComment
-            result = "--[[" .. stat_multiline_comment.content .. "]]"
         else
             error("unknown stat type " .. node.t)
         end
@@ -900,6 +903,8 @@ return {
     AST_EXPR_IF_ELSE = AST_EXPR_IF_ELSE,
     AST_EXPR_INTERP_STRING = AST_EXPR_INTERP_STRING,
 
+    AST_EXPR_MULTILINE_COMMENT = AST_EXPR_MULTILINE_COMMENT,
+
     AST_EXPR_TOP = AST_EXPR_TOP,
     AST_EXPR_UNKNOWN = AST_EXPR_UNKNOWN,
 
@@ -920,7 +925,6 @@ return {
     AST_STAT_LOCAL_FUNCTION = AST_STAT_LOCAL_FUNCTION,
 
     AST_STAT_COMMENT = AST_STAT_COMMENT,
-    AST_STAT_MULTILINE_COMMENT = AST_STAT_MULTILINE_COMMENT,
 
     newAstLocal = newAstLocal,
 
@@ -942,6 +946,8 @@ return {
     newAstExprIfElse = newAstExprIfElse,
     newAstExprInterpString = newAstExprInterpString,
 
+    newAstExprMultilineComment = newAstExprMultilineComment,
+
     newAstExprTop = newAstExprTop,
     newAstExprUnknown = newAstExprUnknown,
 
@@ -962,5 +968,4 @@ return {
     newAstStatLocalFunction = newAstStatLocalFunction,
 
     newAstStatComment = newAstStatComment,
-    newAstStatMultilineComment = newAstStatMultilineComment
 }
