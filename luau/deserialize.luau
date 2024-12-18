@@ -60,12 +60,24 @@ type decodeCode = ( { number } ) -> ()
 
 local builtin_decodeCode_map = {
     op_mul_227 = function(code_list: { number })
-        for i, insn in code_list do
-            local op = getOp(insn)
-            local new = setOp(insn, op * 203)
-            code_list[i] = new
+        local i = 1
+        while i <= #code_list do
+            local old = code_list[i]
+            local insn = setOp(old, getOp(old) * 203)
+
+            local skip_next = hasAux(insn)
+
+            code_list[i] = insn
+
+            assert(common.getA(old) == common.getA(insn))
+            assert(common.getB(old) == common.getB(insn))
+            assert(common.getC(old) == common.getC(insn))
+            assert(common.getD(old) == common.getD(insn))
+            assert(common.getE(old) == common.getE(insn))
+
+            i += if skip_next then 2 else 1
         end
-    end
+    end,
 }
 
 -- local genv = getfenv()
