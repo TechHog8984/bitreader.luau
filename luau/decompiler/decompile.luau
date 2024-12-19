@@ -189,6 +189,111 @@ local UNARY_OP_TO_OP_MAP: { [number]: number } = {
     [common.LOP_LENGTH] = ast.UNARY_Len,
 }
 
+local BUILTIN_LIST = setmetatable({
+    "luauF_assert",
+
+    "luauF_abs",
+    "luauF_acos",
+    "luauF_asin",
+    "luauF_atan2",
+    "luauF_atan",
+
+    "luauF_ceil",
+
+    "luauF_cosh",
+    "luauF_cos",
+    "luauF_deg",
+    "luauF_exp",
+
+    "luauF_floor",
+
+    "luauF_fmod",
+    "luauF_frexp",
+    "luauF_ldexp",
+    "luauF_log10",
+    "luauF_log",
+    "luauF_max",
+    "luauF_min",
+    "luauF_modf",
+    "luauF_pow",
+    "luauF_rad",
+    "luauF_sinh",
+    "luauF_sin",
+    "luauF_sqrt",
+    "luauF_tanh",
+    "luauF_tan",
+
+    "luauF_arshift",
+    "luauF_band",
+    "luauF_bnot",
+    "luauF_bor",
+    "luauF_bxor",
+    "luauF_btest",
+    "luauF_extract",
+    "luauF_lrotate",
+    "luauF_lshift",
+    "luauF_replace",
+    "luauF_rrotate",
+    "luauF_rshift",
+
+    "luauF_type",
+
+    "luauF_byte",
+    "luauF_char",
+    "luauF_len",
+
+    "luauF_typeof",
+
+    "luauF_sub",
+
+    "luauF_clamp",
+    "luauF_sign",
+
+    "luauF_round",
+
+    "luauF_rawset",
+    "luauF_rawget",
+    "luauF_rawequal",
+
+    "luauF_tinsert",
+    "luauF_tunpack",
+
+    "luauF_vector",
+
+    "luauF_countlz",
+    "luauF_countrz",
+
+    "luauF_select",
+
+    "luauF_rawlen",
+
+    "luauF_extractk",
+
+    "luauF_getmetatable",
+    "luauF_setmetatable",
+
+    "luauF_tonumber",
+    "luauF_tostring",
+
+    "luauF_byteswap",
+
+    "luauF_readinteger",
+    "luauF_readinteger",
+    "luauF_writeinteger",
+    "luauF_readinteger",
+    "luauF_readinteger",
+    "luauF_writeinteger",
+    "luauF_readinteger",
+    "luauF_readinteger",
+    "luauF_writeinteger",
+    "luauF_readfp",
+    "luauF_writefp",
+    "luauF_readfp",
+    "luauF_writefp",
+}, {__index = function(self, key)
+    return "[invalid builtin " .. tostring(key) .. ']'
+end})
+
 local function decompileProto(proto: Proto): AstStatBlock
     log("proto", proto)
 
@@ -575,7 +680,6 @@ local function decompileProto(proto: Proto): AstStatBlock
 
                 pushStat(
                     if next(results) then
-                        -- TODO: look into cases where this is an AstStatAssign
                         if all_results_new then
                             ast.newAstStatLocal(results, { call_expr })
                         else
@@ -804,7 +908,13 @@ local function decompileProto(proto: Proto): AstStatBlock
 
             -- TODO: jumpx
 
-            -- TODO: fastcall
+            elseif op == common.LOP_FASTCALL or
+                op == common.LOP_FASTCALL1 or
+                op == common.LOP_FASTCALL2 or
+                op == common.LOP_FASTCALL2K
+            then
+                local instructionabc = instruction :: InstructionABC
+                pushStat(ast.newAstStatComment(" fastcall " .. BUILTIN_LIST[instructionabc.a]))
 
             elseif op == common.LOP_COVERAGE then
 
@@ -821,8 +931,6 @@ local function decompileProto(proto: Proto): AstStatBlock
                         scope:expectRegisterAsExpr(instructionabc.c)
                     )
                 ))
-
-            -- TODO: fastcall1 through 2k
 
             -- TODO: forgprep
 
