@@ -106,6 +106,14 @@ local function tryToCleanIndex(expr_index: AstExprIndexExpr): AstExpr
     return expr_index
 end
 
+local function getExpressionListFromAstLocalList(ast_local_list: { AstLocal }): { AstExpr }
+    local expressions: { AstExpr } = {}
+    for i = 1, #ast_local_list do
+        expressions[i] = ast.newAstExprLocal(ast_local_list[i])
+    end
+    return expressions
+end
+
 type VariablePrefix = "var" | "arg" | "upval"
 type Variable = {
     prefix: VariablePrefix,
@@ -171,6 +179,9 @@ local BINARY_LOP_TO_OP_MAP: { [number]: number } = {
 
     [common.LOP_ANDK] = ast.BINARY_And,
     [common.LOP_ORK] = ast.BINARY_Or,
+
+    [common.LOP_SUBRK] = ast.BINARY_Sub,
+    [common.LOP_DIVRK] = ast.BINARY_Div,
 }
 local UNARY_OP_TO_OP_MAP: { [number]: number } = {
     [common.LOP_NOT] = ast.UNARY_Not,
@@ -518,15 +529,26 @@ local function decompileProto(proto: Proto): AstStatBlock
                     end
                 end
 
+                local all_results_new = true
                 if result_count == -1 then
                     results[1] = ast.newAstLocal("!TOP!")
                 else
+                    local last_is_new: boolean | number = 0
                     for i = 1, result_count do
                         local variable, is_new = scope:getOrAddRegister(func + i - 1)
                         results[i] = variable.ast_local
-                        -- TODO: look into cases where this is valid
+
+                        if last_is_new == 0 then
+                            last_is_new = is_new
+                        else
+                            if is_new ~= last_is_new then
+                                is_new = false
+                                -- error("is_new mismatch in CALL")
+                            end
+                        end
+
                         if not is_new then
-                            assert("call result " .. i .. " (register " .. func + i - 1 .. ") was not new")
+                            all_results_new = false
                         end
                     end
                 end
@@ -554,7 +576,10 @@ local function decompileProto(proto: Proto): AstStatBlock
                 pushStat(
                     if next(results) then
                         -- TODO: look into cases where this is an AstStatAssign
-                        ast.newAstStatLocal(results, { call_expr })
+                        if all_results_new then
+                            ast.newAstStatLocal(results, { call_expr })
+                        else
+                            ast.newAstStatAssign(getExpressionListFromAstLocalList(results), { call_expr })
                     else
                         ast.newAstStatExpr(call_expr)
                 )
@@ -743,12 +768,8 @@ local function decompileProto(proto: Proto): AstStatBlock
                             { ast.newAstExprVarargs() }
                         ))
                     else
-                        local expressions: { AstExpr } = {}
-                        for i = 1, count do
-                            expressions[i] = ast.newAstExprLocal(results[i])
-                        end
                         pushStat(ast.newAstStatAssign(
-                            expressions,
+                            getExpressionListFromAstLocalList(results),
                             { ast.newAstExprVarargs() }
                         ))
                     end
@@ -766,7 +787,13 @@ local function decompileProto(proto: Proto): AstStatBlock
                 local instructiona = instruction :: InstructionA
 
                 -- pushStat(ast.newAstStatComment(" prep varargs"))
-                pushStat(scope:setRegisterListSingleExpr(0, instructiona.a, ast.newAstExprVarargs()))
+                if instructiona.a > 0 then
+                    pushStat(scope:setRegisterListSingleExpr(
+                        0,
+                        instructiona.a,
+                        ast.newAstExprVarargs()
+                    ))
+                end
 
             elseif op == common.LOP_LOADKX then
                 local instructionaaux = instruction :: InstructionAAUX
@@ -776,6 +803,30 @@ local function decompileProto(proto: Proto): AstStatBlock
                 ))
 
             -- TODO: jumpx
+
+            -- TODO: fastcall
+
+            elseif op == common.LOP_COVERAGE then
+
+            -- TODO: capture
+            -- elseif op == common.LOP_CAPTURE then
+            --     local instructionab = instruction :: InstructionAB
+
+            elseif op == common.LOP_SUBRK or op == common.LOP_DIVRK then
+                local instructionabc = instruction :: InstructionABC
+                pushStat(scope:setSingleRegister(
+                    instructionabc.a,
+                    ast.newAstExprBinary(BINARY_LOP_TO_OP_MAP[op],
+                        getConstantExpr(constant_list[instructionabc.b]),
+                        scope:expectRegisterAsExpr(instructionabc.c)
+                    )
+                ))
+
+            -- TODO: fastcall1 through 2k
+
+            -- TODO: forgprep
+
+            -- TODO: jumpxeqknil through jumpxeqks
             else
                 pushStat(ast.newAstStatComment("unhandled op " .. tostringOp(op)))
             end
