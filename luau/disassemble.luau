@@ -42,7 +42,7 @@ local function disassembleProto(proto: Proto): string
 
     result ..= "-- instructions:\n"
     for index = 0, proto.size_instructions - 1 do
-        result ..= index .. '\t' .. proto.instructions[index]:format() .. '\n'
+        result ..= index .. '\t' .. proto.instructions[index]:format(proto.constant_list) .. '\n'
     end
 
     result ..= "-- constants:\n"

@@ -86,7 +86,7 @@ local LBC_CONSTANT_MAX = LBC_CONSTANT_VECTOR
 
 type BaseConstant = {
     t: number,
-    format: (self: Constant) -> string
+    format: (Constant, boolean?) -> string
 }
 export type ConstantNil = BaseConstant
 export type ConstantBoolean = BaseConstant & {
@@ -134,7 +134,7 @@ export type LocVar = {
     reg: number
 }
 
-type BaseInstruction = { op: number, format: (self: Instruction) -> string }
+type BaseInstruction = { op: number, format: (Instruction) -> string }
 
 export type InstructionSpecial = BaseInstruction & {
     is_nop: boolean,
@@ -212,7 +212,7 @@ local CONSTANT_TYPE_NAME_MAP = {
     [LBC_CONSTANT_VECTOR] = "vector",
 }
 
-function formatConstant(self: Constant): string
+function formatConstant(self: Constant, omit_type: boolean?): string
     local result = "nil"
     if self.t == LBC_CONSTANT_NIL then
     elseif self.t == LBC_CONSTANT_BOOLEAN then
@@ -245,6 +245,9 @@ function formatConstant(self: Constant): string
         error("INVALID CONSTANT TYPE " .. tostring(self.t))
     end
 
+    if omit_type then
+        return result
+    end
     return result .. " -- " .. CONSTANT_TYPE_NAME_MAP[self.t]
 end
 
@@ -756,6 +759,7 @@ local INSTRUCTION_AD_MAP: number_to_boolean = {
     [LOP_FORNLOOP] = true,
     [LOP_DUPCLOSURE] = true,
     [LOP_FORGPREP] = true,
+    [LOP_JUMPXEQKNIL] = true
 }
 local INSTRUCTION_AAUX_MAP: number_to_boolean = {
     [LOP_LOADKX] = true
@@ -807,7 +811,6 @@ local INSTRUCTION_ADAUX_MAP: number_to_boolean = {
     [LOP_JUMPIFNOTLE] = true,
     [LOP_JUMPIFNOTLT] = true,
     [LOP_FORGLOOP] = true,
-    [LOP_JUMPXEQKNIL] = true,
     [LOP_JUMPXEQKB] = true,
     [LOP_JUMPXEQKN] = true,
     [LOP_JUMPXEQKS] = true,
@@ -838,6 +841,60 @@ local INSTRUCTION_ANYAUX_MAP: number_to_boolean = {} do
 
     push(INSTRUCTION_ABCAUX_MAP)
 end
+
+local CONSTANT_B_MAP: number_to_boolean = {
+    [LOP_SUBRK] = true,
+    [LOP_DIVRK] = true
+}
+local CONSTANT_C_MAP: number_to_boolean = {
+    [LOP_ADDK] = true,
+    [LOP_SUBK] = true,
+    [LOP_MULK] = true,
+    [LOP_DIVK] = true,
+    [LOP_MODK] = true,
+    [LOP_POWK] = true,
+
+    [LOP_ANDK] = true,
+    [LOP_ORK] = true,
+
+    [LOP_IDIVK] = true
+}
+local CONSTANT_D_MAP: number_to_boolean = {
+    [LOP_LOADK] = true,
+    [LOP_GETIMPORT] = true,
+    [LOP_DUPTABLE] = true,
+    [LOP_DUPCLOSURE] = true
+}
+local CONSTANT_AUX_MAP: number_to_boolean = {
+    [LOP_GETGLOBAL] = true,
+    [LOP_SETGLOBAL] = true,
+
+    [LOP_GETTABLEKS] = true,
+    [LOP_SETTABLEKS] = true,
+
+    [LOP_NAMECALL] = true,
+
+    [LOP_LOADKX] = true,
+
+    [LOP_FASTCALL2K] = true
+}
+local CONSTANT_AUX_LOW24BITS: number_to_boolean = {
+    [LOP_JUMPXEQKN] = true,
+    [LOP_JUMPXEQKS] = true
+}
+local CONSTANT_AUX_LOWBIT: number_to_boolean = {
+    [LOP_JUMPXEQKB] = true
+}
+
+type valid_arg = "a" | "b" | "c" | "d" | "e" | "aux"
+local ARG_CONSTANT_TABLE_MAP: { [valid_arg]: number_to_boolean } = {
+    a = {},
+    b = CONSTANT_B_MAP,
+    c = CONSTANT_C_MAP,
+    d = CONSTANT_D_MAP,
+    e = {},
+    aux = CONSTANT_AUX_MAP
+}
 
 local function uint8(num: number): number
     return bit32.extract(num, 0, 8)
@@ -897,55 +954,147 @@ local function hasAux(insn: number): boolean
     return INSTRUCTION_ANYAUX_MAP[op] or false
 end
 
-local function formatInstruction(instruction: Instruction): string
+local function formatInstruction(instruction: Instruction, constant_list: { Constant }?): string
     local op = instruction.op
     local op_string = tostringOp(instruction.op)
     local result = op_string
 
+    local arg_list: { valid_arg } = {}
+    local function pushGenericStub(key: valid_arg)
+        arg_list[#arg_list + 1] = key
+    end
+    local has_args = false
+    local function pushGeneric(key: valid_arg)
+        has_args = true
+        pushGeneric = pushGenericStub
+        pushGenericStub(key)
+    end
+
+    local function pushA()
+        pushGeneric("a")
+    end
+    local function pushB()
+        pushGeneric("b")
+    end
+    local function pushC()
+        pushGeneric("c")
+    end
+    local function pushD()
+        pushGeneric("d")
+    end
+    local function pushE()
+        pushGeneric("e")
+    end
+    local function pushAUX()
+        pushGeneric("aux")
+    end
+
     if INSTRUCTION_SPECIAL_MAP[op] then
         return result
     elseif INSTRUCTION_A_MAP[op] then
-        local instructiona = instruction :: InstructionA
-        return result .. "(A" .. instructiona.a .. ")"
+        -- local instructiona = instruction :: InstructionA
+        -- return result .. "(A" .. instructiona.a .. ")"
+        pushA()
     elseif INSTRUCTION_D_MAP[op] then
-        local instructiond = instruction :: InstructionD
-        return result .. "(D" .. instructiond.d .. ")"
+        -- local instructiond = instruction :: InstructionD
+        -- return result .. "(D" .. instructiond.d .. ")"
+        pushD()
     elseif INSTRUCTION_E_MAP[op] then
-        local instructione = instruction :: InstructionE
-        return result .. "(E" .. instructione.e .. ")"
+        -- local instructione = instruction :: InstructionE
+        -- return result .. "(E" .. instructione.e .. ")"
+        pushE()
 
     elseif INSTRUCTION_AB_MAP[op] then
-        local instructionab = instruction :: InstructionAB
-        return result .. "(A" .. instructionab.a .. ", B" .. instructionab.b .. ")"
+        -- local instructionab = instruction :: InstructionAB
+        -- return result .. "(A" .. instructionab.a .. ", B" .. instructionab.b .. ")"
+        pushA()
+        pushB()
     elseif INSTRUCTION_AC_MAP[op] then
-        local instructionac = instruction :: InstructionAC
-        return result .. "(A" .. instructionac.a .. ", C" .. instructionac.c .. ")"
+        -- local instructionac = instruction :: InstructionAC
+        -- return result .. "(A" .. instructionac.a .. ", C" .. instructionac.c .. ")"
+        pushA()
+        pushC()
     elseif INSTRUCTION_AD_MAP[op] then
-        local instructionad = instruction :: InstructionAD
-        return result .. "(A" .. instructionad.a .. ", D" .. instructionad.d .. ")"
+        -- local instructionad = instruction :: InstructionAD
+        -- return result .. "(A" .. instructionad.a .. ", D" .. instructionad.d .. ")"
+        pushA()
+        pushD()
     elseif INSTRUCTION_AAUX_MAP[op] then
-        local instructionaaux = instruction :: InstructionAAUX
-        return result .. "(A" .. instructionaaux.a .. ", AUX" .. instructionaaux.aux .. ")"
+        -- local instructionaaux = instruction :: InstructionAAUX
+        -- return result .. "(A" .. instructionaaux.a .. ", AUX" .. instructionaaux.aux .. ")"
+        pushA()
+        pushAUX()
 
     elseif INSTRUCTION_ABC_MAP[op] then
-        local instructionabc = instruction :: InstructionABC
-        return result .. "(A" .. instructionabc.a .. ", B" .. instructionabc.b .. ", C" .. instructionabc.c .. ")"
+        -- local instructionabc = instruction :: InstructionABC
+        -- return result .. "(A" .. instructionabc.a .. ", B" .. instructionabc.b .. ", C" .. instructionabc.c .. ")"
+        pushA()
+        pushB()
+        pushC()
     elseif INSTRUCTION_ABAUX_MAP[op] then
-        local instructionabaux = instruction :: InstructionABAUX
-        return result .. "(A" .. instructionabaux.a .. ", B" .. instructionabaux.b .. ", AUX" .. instructionabaux.aux .. ")"
+        -- local instructionabaux = instruction :: InstructionABAUX
+        -- return result .. "(A" .. instructionabaux.a .. ", B" .. instructionabaux.b .. ", AUX" .. instructionabaux.aux .. ")"
+        pushA()
+        pushB()
+        pushAUX()
     elseif INSTRUCTION_ACAUX_MAP[op] then
-        local instructionacaux = instruction :: InstructionACAUX
-        return result .. "(A" .. instructionacaux.a .. ", C" .. instructionacaux.c .. ", AUX" .. instructionacaux.aux .. ")"
+        -- local instructionacaux = instruction :: InstructionACAUX
+        -- return result .. "(A" .. instructionacaux.a .. ", C" .. instructionacaux.c .. ", AUX" .. instructionacaux.aux .. ")"
+        pushA()
+        pushC()
+        pushAUX()
     elseif INSTRUCTION_ADAUX_MAP[op] then
-        local instructionadaux = instruction :: InstructionADAUX
-        return result .. "(A" .. instructionadaux.a .. ", D" .. instructionadaux.d .. ", AUX" .. instructionadaux.aux .. ")"
+        -- local instructionadaux = instruction :: InstructionADAUX
+        -- return result .. "(A" .. instructionadaux.a .. ", D" .. instructionadaux.d .. ", AUX" .. instructionadaux.aux .. ")"
+        pushA()
+        pushD()
+        pushAUX()
 
     elseif INSTRUCTION_ABCAUX_MAP[op] then
-        local instructionabcaux = instruction :: InstructionABCAUX
-        return result .. "(A" .. instructionabcaux.a .. ", B" .. instructionabcaux.b .. ", C" .. instructionabcaux.c .. ", AUX" .. instructionabcaux.aux .. ")"
+        -- local instructionabcaux = instruction :: InstructionABCAUX
+        -- return result .. "(A" .. instructionabcaux.a .. ", B" .. instructionabcaux.b .. ", C" .. instructionabcaux.c .. ", AUX" .. instructionabcaux.aux .. ")"
+        pushA()
+        pushB()
+        pushC()
+        pushAUX()
     else
         error("invalid op " .. op_string)
     end
+
+    if has_args then
+        result ..= '('
+        -- why the FUCK do I have to explicitly put the type here
+        for _, arg: valid_arg in arg_list do
+            local value = (instruction::any)[arg]
+            local function getConstant()
+                if not constant_list then
+                    return ''
+                end
+
+                local value = value
+                local op = instruction.op
+                if not ARG_CONSTANT_TABLE_MAP[arg][op] then
+                    local low24 = CONSTANT_AUX_LOW24BITS[op]
+                    if arg ~= "aux" or not low24 or not CONSTANT_AUX_LOWBIT[op] then
+                        return ''
+                    end
+
+                    if low24 then
+                        value = band(value, 0xffffff)
+                    else
+                        value = band(value, 1)
+                    end
+                end
+
+                return '(' .. constant_list[value]:format(true) .. ')'
+            end
+            result ..= arg:upper() .. value .. getConstant() .. ", "
+        end
+        result = result:sub(1, -3)
+        result ..= ')'
+    end
+
+    return result
 end
 
 local function deserializeInstruction(insn: number, aux: number?): (Instruction, boolean)
