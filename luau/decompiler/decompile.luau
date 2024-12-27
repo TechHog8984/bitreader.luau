@@ -339,11 +339,14 @@ local function decompileProto(proto: Proto): AstStatBlock
         register_to_variable_map = {},
         proto_has_been_created_map = {},
 
+        -- these are dumb because of instructions like CALL and GETVARARGS
         expectRegister = function(self: Scope, register: number): Variable
-            return betterAssert(self.register_to_variable_map[register], "failed to find register " .. register .. " in map")
+            -- return betterAssert(self.register_to_variable_map[register], "failed to find register " .. register .. " in map")
+            return self:getOrAddRegister(register)
         end,
         expectRegisterAsExpr = function(self: Scope, register: number): AstExprLocal
-            return ast.newAstExprLocal(self:expectRegister(register).ast_local)
+            -- return ast.newAstExprLocal(self:expectRegister(register).ast_local)
+            return self:getOrAddRegisterAsExpr(register)
         end,
 
         getOrAddRegister = function(self: Scope, register: number): (Variable, boolean)
@@ -762,7 +765,9 @@ local function decompileProto(proto: Proto): AstStatBlock
                 op == common.LOP_DIVK or
                 op == common.LOP_IDIVK or
                 op == common.LOP_MODK or
-                op == common.LOP_POWK
+                op == common.LOP_POWK or
+                op == common.LOP_ANDK or
+                op == common.LOP_ORK
             then
                 local instructionabc = instruction :: InstructionABC
                 pushStat(scope:setSingleRegister(
