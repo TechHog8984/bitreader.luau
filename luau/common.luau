@@ -134,7 +134,11 @@ export type LocVar = {
     reg: number
 }
 
-type BaseInstruction = { op: number, format: (Instruction) -> string }
+type JumpTarget = {
+    conditional: boolean,
+    target: number
+}
+type BaseInstruction = { op: number, index: number, format: (Instruction) -> string, getJumpTarget: (Instruction) -> JumpTarget }
 
 export type InstructionSpecial = BaseInstruction & {
     is_nop: boolean,
@@ -160,10 +164,10 @@ export type InstructionADAUX = InstructionAD & InstructionAUX
 
 export type InstructionABCAUX = InstructionABC & InstructionAUX
 
-export type Instruction = InstructionSpecial | InstructionA | InstructionD | InstructionE |
+export type Instruction = BaseInstruction & (InstructionSpecial | InstructionA | InstructionD | InstructionE |
     InstructionAB | InstructionAC | InstructionAD | InstructionAAUX |
     InstructionABC | InstructionABAUX | InstructionACAUX |
-    InstructionADAUX | InstructionABCAUX
+    InstructionADAUX | InstructionABCAUX)
 
 export type Proto = {
     bytecode_id: number,
