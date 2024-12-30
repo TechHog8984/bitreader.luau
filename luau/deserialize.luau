@@ -221,6 +221,7 @@ local function deserialize(bytecode: string | buffer, decodeCodeArg: (decodeCode
                     insn,
                     if hasAux(insn) then code_list[j + 1] else nil
                 )
+                instruction.index = index
                 proto.instructions[index] = instruction
                 if skip_next then
                     j += 1
