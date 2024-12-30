@@ -1138,11 +1138,11 @@ local function getInstructionJumpTarget(instruction: Instruction): JumpTarget?
 
     local unconditional = UNCONDITIONAL_JUMPTARGET_MAP[op]
     if unconditional then
-        target = (instruction::any)[unconditional]
+        target = instruction.index + (instruction::any)[unconditional]
     end
     local conditional = CONDITIONAL_JUMPTARGET_MAP[op]
     if conditional then
-        target = (instruction::any)[conditional]
+        target = instruction.index + (instruction::any)[conditional]
         dont_jump = target == CONDITIONAL_DONTJUMP_MAP[op]
     end
 
@@ -1156,6 +1156,27 @@ local function getInstructionJumpTarget(instruction: Instruction): JumpTarget?
         dont_jump = dont_jump
     }
 end
+
+local instruction_metatable = {
+    __tostring = function(self: Instruction)
+        local result = "{ "
+
+        local function pushValue(value: string)
+            result ..= tostring(value) .. ", "
+        end
+        local function pushKey(key: string)
+            local value = (self::any)[key]
+            result ..= key .. " = "
+            pushValue(value)
+        end
+
+        pushKey("op")
+        pushKey("index")
+        pushValue(self:format())
+
+        return (result:gsub(", $", "")) .. " }"
+    end
+}
 
 local function deserializeInstruction(insn: number, aux: number?): (Instruction, boolean)
     local op = getOp(insn)
@@ -1217,6 +1238,8 @@ local function deserializeInstruction(insn: number, aux: number?): (Instruction,
     instruction.format = formatInstruction
     instruction.getJumpTarget = getInstructionJumpTarget
     instruction.op_string = if BITREADER_DEBUG then op_string else nil
+
+    setmetatable(instruction, instruction_metatable)
 
     return instruction, skip_next
 end
