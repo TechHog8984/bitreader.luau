@@ -139,7 +139,7 @@ type JumpTarget = {
     target: number,
     dont_jump: boolean
 }
-type BaseInstruction = { op: number, index: number, format: ( Instruction, { Constant }? ) -> string, getJumpTarget: ( Instruction ) -> JumpTarget }
+type BaseInstruction = { op: number, index: number, format: ( Instruction, { Constant }? ) -> string, getJumpTarget: ( Instruction ) -> JumpTarget? }
 
 export type InstructionSpecial = BaseInstruction & {
     is_nop: boolean,
@@ -1131,7 +1131,7 @@ local function formatInstruction(instruction: Instruction, constant_list: { Cons
 
     return result
 end
-local function getInstructionJumpTarget(instruction: Instruction): JumpTarget
+local function getInstructionJumpTarget(instruction: Instruction): JumpTarget?
     local op = instruction.op
     local target: number = -1
     local dont_jump: boolean = false
@@ -1144,6 +1144,10 @@ local function getInstructionJumpTarget(instruction: Instruction): JumpTarget
     if conditional then
         target = (instruction::any)[conditional]
         dont_jump = target == CONDITIONAL_DONTJUMP_MAP[op]
+    end
+
+    if not unconditional and not conditional then
+        return nil
     end
 
     return {
