@@ -136,7 +136,8 @@ export type LocVar = {
 
 type JumpTarget = {
     conditional: boolean,
-    target: number
+    target: number,
+    dont_jump: boolean
 }
 type BaseInstruction = { op: number, index: number, format: ( Instruction, { Constant }? ) -> string, getJumpTarget: ( Instruction ) -> JumpTarget }
 
@@ -900,6 +901,60 @@ local ARG_CONSTANT_TABLE_MAP: { [valid_arg]: number_to_boolean } = {
     aux = CONSTANT_AUX_MAP
 }
 
+local UNCONDITIONAL_JUMPTARGET_MAP: { [number]: valid_arg } = {
+    [LOP_JUMP] = "d",
+    [LOP_JUMPBACK] = "d",
+
+    [LOP_FORGPREP] = "d"
+}
+local CONDITIONAL_JUMPTARGET_MAP: { [number]: valid_arg } = {
+    [LOP_JUMPIF] = "d",
+    [LOP_JUMPIFNOT] = "d",
+
+    [LOP_JUMPIFEQ] = "d",
+    [LOP_JUMPIFLE] = "d",
+    [LOP_JUMPIFLT] = "d",
+    [LOP_JUMPIFNOTEQ] = "d",
+    [LOP_JUMPIFNOTLE] = "d",
+    [LOP_JUMPIFNOTLT] = "d",
+
+    [LOP_FORNPREP] = "d",
+    [LOP_FORNLOOP] = "d",
+    [LOP_FORGLOOP] = "d",
+
+    [LOP_JUMPX] = "e",
+
+    [LOP_JUMPXEQKNIL] = "d",
+    [LOP_JUMPXEQKB] = "d",
+
+    [LOP_JUMPXEQKN] = "d",
+    [LOP_JUMPXEQKS] = "d"
+}
+local CONDITIONAL_DONTJUMP_MAP: { [number]: number } = {
+    [LOP_JUMPIF] = 0,
+    [LOP_JUMPIFNOT] = 0,
+
+    [LOP_JUMPIFEQ] = 1,
+    [LOP_JUMPIFLE] = 1,
+    [LOP_JUMPIFLT] = 1,
+    [LOP_JUMPIFNOTEQ] = 1,
+    [LOP_JUMPIFNOTLE] = 1,
+    [LOP_JUMPIFNOTLT] = 1,
+
+    -- -1 means nonexistant
+    [LOP_FORNPREP] = -1,
+    [LOP_FORNLOOP] = -1,
+    [LOP_FORGLOOP] = -1,
+
+    [LOP_JUMPX] = 0,
+
+    [LOP_JUMPXEQKNIL] = 1,
+    [LOP_JUMPXEQKB] = 1,
+
+    [LOP_JUMPXEQKN] = 1,
+    [LOP_JUMPXEQKS] = 1
+}
+
 local function uint8(num: number): number
     return bit32.extract(num, 0, 8)
 end
@@ -996,67 +1051,43 @@ local function formatInstruction(instruction: Instruction, constant_list: { Cons
     if INSTRUCTION_SPECIAL_MAP[op] then
         return result
     elseif INSTRUCTION_A_MAP[op] then
-        -- local instructiona = instruction :: InstructionA
-        -- return result .. "(A" .. instructiona.a .. ")"
         pushA()
     elseif INSTRUCTION_D_MAP[op] then
-        -- local instructiond = instruction :: InstructionD
-        -- return result .. "(D" .. instructiond.d .. ")"
         pushD()
     elseif INSTRUCTION_E_MAP[op] then
-        -- local instructione = instruction :: InstructionE
-        -- return result .. "(E" .. instructione.e .. ")"
         pushE()
 
     elseif INSTRUCTION_AB_MAP[op] then
-        -- local instructionab = instruction :: InstructionAB
-        -- return result .. "(A" .. instructionab.a .. ", B" .. instructionab.b .. ")"
         pushA()
         pushB()
     elseif INSTRUCTION_AC_MAP[op] then
-        -- local instructionac = instruction :: InstructionAC
-        -- return result .. "(A" .. instructionac.a .. ", C" .. instructionac.c .. ")"
         pushA()
         pushC()
     elseif INSTRUCTION_AD_MAP[op] then
-        -- local instructionad = instruction :: InstructionAD
-        -- return result .. "(A" .. instructionad.a .. ", D" .. instructionad.d .. ")"
         pushA()
         pushD()
     elseif INSTRUCTION_AAUX_MAP[op] then
-        -- local instructionaaux = instruction :: InstructionAAUX
-        -- return result .. "(A" .. instructionaaux.a .. ", AUX" .. instructionaaux.aux .. ")"
         pushA()
         pushAUX()
 
     elseif INSTRUCTION_ABC_MAP[op] then
-        -- local instructionabc = instruction :: InstructionABC
-        -- return result .. "(A" .. instructionabc.a .. ", B" .. instructionabc.b .. ", C" .. instructionabc.c .. ")"
         pushA()
         pushB()
         pushC()
     elseif INSTRUCTION_ABAUX_MAP[op] then
-        -- local instructionabaux = instruction :: InstructionABAUX
-        -- return result .. "(A" .. instructionabaux.a .. ", B" .. instructionabaux.b .. ", AUX" .. instructionabaux.aux .. ")"
         pushA()
         pushB()
         pushAUX()
     elseif INSTRUCTION_ACAUX_MAP[op] then
-        -- local instructionacaux = instruction :: InstructionACAUX
-        -- return result .. "(A" .. instructionacaux.a .. ", C" .. instructionacaux.c .. ", AUX" .. instructionacaux.aux .. ")"
         pushA()
         pushC()
         pushAUX()
     elseif INSTRUCTION_ADAUX_MAP[op] then
-        -- local instructionadaux = instruction :: InstructionADAUX
-        -- return result .. "(A" .. instructionadaux.a .. ", D" .. instructionadaux.d .. ", AUX" .. instructionadaux.aux .. ")"
         pushA()
         pushD()
         pushAUX()
 
     elseif INSTRUCTION_ABCAUX_MAP[op] then
-        -- local instructionabcaux = instruction :: InstructionABCAUX
-        -- return result .. "(A" .. instructionabcaux.a .. ", B" .. instructionabcaux.b .. ", C" .. instructionabcaux.c .. ", AUX" .. instructionabcaux.aux .. ")"
         pushA()
         pushB()
         pushC()
@@ -1099,6 +1130,27 @@ local function formatInstruction(instruction: Instruction, constant_list: { Cons
     end
 
     return result
+end
+local function getInstructionJumpTarget(instruction: Instruction): JumpTarget
+    local op = instruction.op
+    local target: number = -1
+    local dont_jump: boolean = false
+
+    local unconditional = UNCONDITIONAL_JUMPTARGET_MAP[op]
+    if unconditional then
+        target = (instruction::any)[unconditional]
+    end
+    local conditional = CONDITIONAL_JUMPTARGET_MAP[op]
+    if conditional then
+        target = (instruction::any)[conditional]
+        dont_jump = target == CONDITIONAL_DONTJUMP_MAP[op]
+    end
+
+    return {
+        conditional = not unconditional,
+        target = target,
+        dont_jump = dont_jump
+    }
 end
 
 local function deserializeInstruction(insn: number, aux: number?): (Instruction, boolean)
@@ -1159,6 +1211,7 @@ local function deserializeInstruction(insn: number, aux: number?): (Instruction,
     end
 
     instruction.format = formatInstruction
+    instruction.getJumpTarget = getInstructionJumpTarget
     instruction.op_string = if BITREADER_DEBUG then op_string else nil
 
     return instruction, skip_next
