@@ -138,7 +138,7 @@ type JumpTarget = {
     conditional: boolean,
     target: number
 }
-type BaseInstruction = { op: number, index: number, format: (Instruction) -> string, getJumpTarget: (Instruction) -> JumpTarget }
+type BaseInstruction = { op: number, index: number, format: ( Instruction, { Constant }? ) -> string, getJumpTarget: ( Instruction ) -> JumpTarget }
 
 export type InstructionSpecial = BaseInstruction & {
     is_nop: boolean,
