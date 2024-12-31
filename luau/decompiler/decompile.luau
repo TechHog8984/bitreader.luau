@@ -317,6 +317,10 @@ local function decompileProto(proto: Proto): AstStatBlock
     --     decompiled_body_count += count
     -- end
 
+    if instruction_count == 0 then
+        return ast.newAstStatBlock(decompiled_body)
+    end
+
     local state: {
         current_instruction: Instruction,
         current_index: number | string,
@@ -339,7 +343,7 @@ local function decompileProto(proto: Proto): AstStatBlock
         register_to_variable_map = {},
         proto_has_been_created_map = {},
 
-        -- these are dumb because of instructions like CALL and GETVARARGS
+        -- these are dumb because of instructions like CALL and GETVARARGS that push an unknown number of eleme
         expectRegister = function(self: Scope, register: number): Variable
             -- return betterAssert(self.register_to_variable_map[register], "failed to find register " .. register .. " in map")
             return self:getOrAddRegister(register)
@@ -445,6 +449,108 @@ local function decompileProto(proto: Proto): AstStatBlock
 
         return ast.newAstExprLocal(newVariableUpval(upvalue).ast_local)
     end
+
+    type CFG_Graph = {
+        entry_block: CFG_BasicBlock,
+        exit_block_list: { CFG_BasicBlock },
+        leader_map: { [Instruction]: boolean },
+        leader_basic_block_map: { [Instruction]: CFG_BasicBlock }
+    }
+    type CFG_BasicBlock = {
+        entry_point: Instruction,
+        exit_point: Instruction,
+        list: { Instruction }
+    }
+    local function generateControlFlowGraph(): CFG_Graph?
+        local graph: CFG_Graph = {
+            entry_block = nil :: any,
+            exit_block_list = {},
+            leader_map = {
+                [instruction_list[0]] = true
+            },
+            leader_basic_block_map = {}
+        }
+        local exit_block_list = graph.exit_block_list
+        local leader_map = graph.leader_map
+        local leader_basic_block_map = graph.leader_basic_block_map
+
+        -- identify leaders
+        local index = 1
+        if index == instruction_count then
+            return nil
+        end
+        while true do
+            local instruction = instruction_list[index]
+            local jump_target = instruction:getJumpTarget()
+            if jump_target then
+                -- FIXME: perhaps dont_jump should make the current instruction a leader instead; verify this
+                if not jump_target.dont_jump then
+                    local jump_target_insn = instruction_list[jump_target.target]
+                    leader_map[jump_target_insn] = true
+                end
+            end
+
+            index += 1
+
+            if index == instruction_count then
+                break
+            elseif jump_target then
+                instruction = instruction_list[index]
+
+                leader_map[instruction] = true
+            end
+        end
+
+        -- log("LEADER_MAP", leader_map)
+
+        -- generate basic blocks
+
+        for leader in leader_map do
+            local basic_block: CFG_BasicBlock = {
+                entry_point = leader,
+                exit_point = leader,
+                list = { leader }
+            }
+            local list = basic_block.list
+
+            index = leader.index + 1
+            if index < instruction_count then
+                while true do
+                    if index == instruction_count then
+                        break
+                    end
+                    local instruction = instruction_list[index]
+                    if leader_map[instruction] then
+                        break
+                    end
+
+                    basic_block.exit_point = instruction
+
+                    list[#list + 1] = instruction
+
+                    index += 1
+                end
+            end
+
+            local exit_point = assert(basic_block.exit_point, "failed to set exit_point")
+            leader_basic_block_map[leader] = basic_block
+
+            if not exit_point:getJumpTarget() then
+                exit_block_list[#exit_block_list + 1] = basic_block
+            end
+
+            -- log("BLOCK WITH LEADER AT " .. leader.index .. ":", basic_block)
+        end
+
+        graph.entry_block = leader_basic_block_map[instruction_list[0]]
+
+        assert(graph.entry_block, "failed to set entry_block")
+        assert(next(exit_block_list), "failed to set exit_block(s)")
+        return graph
+    end
+
+    local control_flow_graph = generateControlFlowGraph()
+    log(control_flow_graph)
 
     local function step1()
         local index = 0
