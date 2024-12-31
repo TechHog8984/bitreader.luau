@@ -930,7 +930,10 @@ local CONDITIONAL_JUMPTARGET_MAP: { [number]: valid_arg } = {
     [LOP_JUMPXEQKN] = "d",
     [LOP_JUMPXEQKS] = "d"
 }
-local CONDITIONAL_DONTJUMP_MAP: { [number]: number } = {
+local DONTJUMP_MAP: { [number]: number } = {
+    [LOP_JUMP] = 0,
+    [LOP_JUMPBACK] = 0,
+
     [LOP_JUMPIF] = 0,
     [LOP_JUMPIFNOT] = 0,
 
@@ -1139,11 +1142,12 @@ local function getInstructionJumpTarget(instruction: Instruction): JumpTarget?
     local unconditional = UNCONDITIONAL_JUMPTARGET_MAP[op]
     if unconditional then
         target = instruction.index + (instruction::any)[unconditional]
+        dont_jump = target == DONTJUMP_MAP[op]
     end
     local conditional = CONDITIONAL_JUMPTARGET_MAP[op]
     if conditional then
         target = instruction.index + (instruction::any)[conditional]
-        dont_jump = target == CONDITIONAL_DONTJUMP_MAP[op]
+        dont_jump = target == DONTJUMP_MAP[op]
     end
 
     if not unconditional and not conditional then
